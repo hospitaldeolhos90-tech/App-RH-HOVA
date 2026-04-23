@@ -2182,15 +2182,8 @@ with abas[8]:
                     av_html = (f"<img src='data:image/jpeg;base64,{b64f}'"
                                f" class='func-avatar-xl-img'>")
                 else:
-                    av_html = (
-                        f"<div style='width:110px;height:110px;border-radius:50%;"
-                        f"background:linear-gradient(145deg,#004D40,#26A69A);"
-                        f"color:#FFF;display:flex;justify-content:center;"
-                        f"align-items:center;font-size:34px;font-weight:900;"
-                        f"margin:0 auto 16px auto;"
-                        f"box-shadow:0 6px 24px rgba(0,77,64,0.3);'>"
-                        f"{iniciais(func['nome'])}</div>"
-                    )
+                    av_html = (f"<div class='func-avatar-xl'>"
+                               f"{iniciais(func['nome'])}</div>")
 
                 ntw_badge = (
                     "<span style='background:#DCFCE7;color:#166534;font-size:10px;"
@@ -2200,17 +2193,11 @@ with abas[8]:
                 )
 
                 st.markdown(
-                    f"<div style='background:linear-gradient(160deg,#F2FAF8,#E6F4F1);"
-                    f"border:1px solid #B2DFDB;border-radius:20px;"
-                    f"padding:32px 40px 24px;text-align:center;margin-bottom:20px;"
-                    f"position:relative;overflow:hidden;'>"
-                    f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;"
-                    f"background:linear-gradient(180deg,#004D40,#26A69A);"
-                    f"border-radius:20px 0 0 20px;'></div>"
+                    f"<div class='dossie-header'>"
                     f"{av_html}"
-                    f"<div style='font-size:22px;font-weight:900;color:#0D1B2A;"
+                    f"<div style='font-size:24px;font-weight:900;color:#0D1B2A;"
                     f"margin-bottom:4px;'>{func['nome']}</div>"
-                    f"<div style='font-size:12px;color:#004D40;font-weight:700;"
+                    f"<div style='font-size:12px;color:#0891B2;font-weight:700;"
                     f"letter-spacing:1.5px;text-transform:uppercase;'>"
                     f"{func.get('cargo_atual','—')}</div>"
                     f"<div style='font-size:11px;color:#9AA5B4;margin-top:6px;'>"
@@ -2541,78 +2528,137 @@ with abas[8]:
                                 f"<div class='notif notif-warn'>{msg_ntw}</div>",
                                 unsafe_allow_html=True)
 
-        # ── GRID DE CARDS — Verde Petróleo, st.columns nativo ────
+        # ── GRID DE CARDS — estilo referência ────────────────────
         else:
             n_ativos = len(ativos)
             st.markdown(
-                f"<div style='font-size:12px;color:#8A94A6;margin-bottom:20px;'>"
-                f"<b style='color:#004D40;font-size:24px;font-weight:900;'>{n_ativos}</b>"
-                f" colaborador(es) ativo(s)</div>",
+                f"<div style='font-size:12px;color:#8A94A6;margin-bottom:24px;'>"
+                f"<b style='color:#004D40;font-size:26px;font-weight:900;letter-spacing:-1px;'>"
+                f"{n_ativos}</b> colaborador(es) ativo(s)</div>",
                 unsafe_allow_html=True)
 
-            N = 4   # colunas por linha
-            for i in range(0, n_ativos, N):
-                row   = ativos[i:i+N]
-                cols  = st.columns(N)
+            # CSS específico do grid — injetado uma vez
+            st.markdown("""
+            <style>
+            .hova-card {
+                background: #FFFFFF;
+                border-radius: 18px;
+                padding: 28px 16px 20px;
+                text-align: center;
+                box-shadow: 0 3px 16px rgba(0,0,0,0.08);
+                border: 1px solid #E8EAED;
+                transition: box-shadow 0.2s, transform 0.2s;
+                margin-bottom: 4px;
+            }
+            .hova-card:hover {
+                box-shadow: 0 8px 28px rgba(0,77,64,0.14);
+                transform: translateY(-3px);
+            }
+            .hova-card-foto {
+                width: 110px; height: 110px;
+                border-radius: 50%;
+                object-fit: cover;
+                border: 4px solid #E0F2F1;
+                display: block;
+                margin: 0 auto 14px auto;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            }
+            .hova-card-iniciais {
+                width: 110px; height: 110px;
+                border-radius: 50%;
+                background: linear-gradient(145deg, #004D40, #26A69A);
+                color: #FFF;
+                display: flex; justify-content: center; align-items: center;
+                font-size: 36px; font-weight: 900;
+                margin: 0 auto 14px auto;
+                box-shadow: 0 4px 18px rgba(0,77,64,0.28);
+                letter-spacing: 1px;
+            }
+            .hova-card-nome {
+                font-size: 14px; font-weight: 800;
+                color: #0D1B2A; text-transform: uppercase;
+                letter-spacing: 0.5px; line-height: 1.2;
+                margin-bottom: 10px;
+            }
+            .hova-card-cargo-bar {
+                background: #003329;
+                color: #FFFFFF;
+                font-size: 11px; font-weight: 700;
+                letter-spacing: 1.5px; text-transform: uppercase;
+                padding: 7px 10px;
+                border-radius: 8px;
+                margin-bottom: 12px;
+            }
+            .hova-card-tel {
+                font-size: 12px; color: #4A5568;
+                margin-bottom: 14px; font-weight: 500;
+            }
+            .hova-card-ntw {
+                background: #DCFCE7; color: #166534;
+                font-size: 9px; font-weight: 700;
+                padding: 2px 8px; border-radius: 20px;
+                display: inline-block; margin-bottom: 10px;
+                letter-spacing: 1px;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+
+            N = 4
+            for row_start in range(0, n_ativos, N):
+                row  = ativos[row_start:row_start + N]
+                cols = st.columns(N)
+
                 for j, f in enumerate(row):
                     with cols[j]:
-                        ini_f = (f['data_inicio_contrato'].strftime('%d/%m/%Y')
-                                 if f.get('data_inicio_contrato') else '—')
-                        cargo_exib = f.get('cargo_atual') or f.get('setor','—')
-                        ntw_badge  = (
-                            "<span style='background:#DCFCE7;color:#166534;"
-                            "font-size:9px;font-weight:700;padding:2px 8px;"
-                            "border-radius:20px;'>NTW</span> "
-                            if f.get('ntw_enviado') else ""
-                        )
+                        ini_f      = (f['data_inicio_contrato'].strftime('%d/%m/%Y')
+                                      if f.get('data_inicio_contrato') else '—')
+                        cargo_exib = (f.get('cargo_atual') or f.get('setor','—')).upper()
+                        tel_fmt    = f.get('telefone','')
+                        # Formatar telefone: 31999990000 → 31 9 9999-0000
+                        if len(tel_fmt) == 11:
+                            tel_fmt = f"{tel_fmt[:2]} {tel_fmt[2]} {tel_fmt[3:7]}-{tel_fmt[7:]}"
+                        elif len(tel_fmt) == 10:
+                            tel_fmt = f"{tel_fmt[:2]} {tel_fmt[2:6]}-{tel_fmt[6:]}"
+
                         # Avatar
                         if f.get('foto'):
                             b64f = base64.b64encode(f['foto']).decode()
                             av   = (f"<img src='data:image/jpeg;base64,{b64f}'"
-                                    f" style='width:88px;height:88px;border-radius:50%;"
-                                    f"object-fit:cover;border:3px solid #004D40;"
-                                    f"display:block;margin:0 auto 14px;"
-                                    f"box-shadow:0 4px 14px rgba(0,77,64,0.2);'>")
+                                    f" class='hova-card-foto'>")
                         else:
-                            av = (
-                                f"<div style='width:88px;height:88px;border-radius:50%;"
-                                f"background:linear-gradient(145deg,#004D40,#26A69A);"
-                                f"color:#FFF;display:flex;justify-content:center;"
-                                f"align-items:center;font-size:28px;font-weight:900;"
-                                f"margin:0 auto 14px;"
-                                f"box-shadow:0 4px 14px rgba(0,77,64,0.25);'>"
-                                f"{iniciais(f['nome'])}</div>"
-                            )
+                            av   = (f"<div class='hova-card-iniciais'>"
+                                    f"{iniciais(f['nome'])}</div>")
+
+                        ntw_html = ("<div class='hova-card-ntw'>NTW ENVIADO</div>"
+                                    if f.get('ntw_enviado') else "")
+                        tel_html = (f"<div class='hova-card-tel'>&#128222; {tel_fmt}</div>"
+                                    if tel_fmt else "")
 
                         st.markdown(
-                            f"<div style='background:#FFF;border:1px solid #E2E6EA;"
-                            f"border-radius:16px;padding:24px 14px 16px;"
-                            f"text-align:center;"
-                            f"box-shadow:0 2px 10px rgba(0,0,0,0.05);"
-                            f"transition:box-shadow 0.2s;'>"
+                            f"<div class='hova-card'>"
                             f"{av}"
-                            f"<div style='font-size:12px;font-weight:800;color:#0D1B2A;"
-                            f"text-transform:uppercase;line-height:1.3;"
-                            f"margin-bottom:4px;'>{ntw_badge}{f['nome']}</div>"
-                            f"<div style='font-size:11px;color:#004D40;font-weight:700;"
-                            f"letter-spacing:0.5px;text-transform:uppercase;"
-                            f"margin-bottom:4px;'>{cargo_exib}</div>"
-                            f"<div style='font-size:10px;color:#9AA5B4;"
-                            f"margin-bottom:16px;'>Desde {ini_f}</div>"
+                            f"<div class='hova-card-nome'>{f['nome']}</div>"
+                            f"<div class='hova-card-cargo-bar'>{cargo_exib}</div>"
+                            f"{tel_html}"
+                            f"{ntw_html}"
+                            f"<div style='font-size:10px;color:#B0BAC8;'>Desde {ini_f}</div>"
                             f"</div>",
                             unsafe_allow_html=True
                         )
-                        # Botão centralizado abaixo do card
-                        if st.button("Acessar Perfil",
+                        st.markdown("<div style='height:4px;'></div>",
+                                    unsafe_allow_html=True)
+                        if st.button("ACESSAR PERFIL",
                                      key=f"perfil_{f['id']}",
-                                     use_container_width=True):
+                                     use_container_width=True,
+                                     type="primary"):
                             st.session_state.perfil_foco = f['id']
                             st.rerun()
 
-                # Colunas vazias na última linha
+                # Preencher colunas vazias
                 for j in range(len(row), N):
                     cols[j].empty()
                 st.write("")
+
 
     # ════════════════════════════════════════════════════════════
     # EX-COLABORADORES
