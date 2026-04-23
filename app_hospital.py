@@ -754,163 +754,242 @@ def iniciais(nome):
     if len(p) >= 2: return f"{p[0][0]}{p[-1][0]}".upper()
     return nome[:2].upper() if nome else "CV"
 
-def resumo_ia(texto: str) -> str:
+def resumo(texto: str) -> str:
     """
-    Gera um resumo inteligente do currículo usando a API do Claude.
-    Foca em: endereço/cidade, experiências (empresa + cargo + período) e formação.
-    Retorna HTML formatado para exibição no card.
+    Extração inteligente e gratuita — sem API, sem tokens.
+    Foca no que o RH quer ver: endereço, experiências (empresa+cargo+período) e formação.
     """
-    if not texto or len(texto.strip()) < 30:
-        return "<i style='color:#9AA5B4;'>Texto insuficiente para análise.</i>"
-
-    # Limitar texto enviado à API (economiza tokens)
-    texto_truncado = texto[:4000]
-
-    prompt = f"""Analise este currículo e extraia APENAS as informações mais relevantes para um recrutador de hospital.
-Responda SOMENTE em JSON válido, sem texto antes ou depois, sem markdown.
-
-Formato exato:
-{{
-  "nome_completo": "nome extraído ou vazio",
-  "cidade": "cidade/bairro se encontrado, senão vazio",
-  "telefone": "telefone se encontrado, senão vazio",
-  "experiencias": [
-    {{"empresa": "nome", "cargo": "cargo", "periodo": "periodo"}},
-    {{"empresa": "nome", "cargo": "cargo", "periodo": "periodo"}}
-  ],
-  "formacao": "último grau ou curso relevante",
-  "observacao": "algo relevante como CNH, idioma, certificação de saúde (máx 1 linha)"
-}}
-
-Regras:
-- Inclua no máximo 3 experiências (as mais recentes)
-- Se não encontrar algo, deixe vazio ou lista vazia
-- Não invente dados
-- experiencias deve ser sempre uma lista, mesmo vazia
-
-CURRICULO:
-{texto_truncado}"""
-
-    try:
-        import urllib.request
-        import json as _json
-
-        payload = _json.dumps({
-            "model": "claude-sonnet-4-20250514",
-            "max_tokens": 600,
-            "messages": [{"role": "user", "content": prompt}]
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = _json.loads(resp.read().decode("utf-8"))
-
-        raw = data["content"][0]["text"].strip()
-        # Limpar possível markdown
-        raw = re.sub(r'^```json|^```|```$', '', raw.strip(), flags=re.MULTILINE).strip()
-        info = _json.loads(raw)
-
-    except Exception as e:
-        # Fallback: extração manual simples se a API falhar
-        return _resumo_fallback(texto)
-
-    # ── Montar HTML do card de resumo ──
-    html = []
-
-    # Cidade e telefone
-    meta = []
-    if info.get("cidade"):
-        meta.append(f"<span style='color:#004D40;font-weight:700;'>{info['cidade']}</span>")
-    if info.get("telefone"):
-        meta.append(f"<span style='color:#4A5568;'>{info['telefone']}</span>")
-    if meta:
-        html.append("<div style='margin-bottom:14px;font-size:13px;'>" + "&nbsp;&nbsp;·&nbsp;&nbsp;".join(meta) + "</div>")
-
-    # Experiências
-    exps = info.get("experiencias", [])
-    if exps:
-        html.append(
-            "<div style='font-size:10px;font-weight:800;color:#004D40;letter-spacing:2px;"
-            "text-transform:uppercase;margin-bottom:8px;'>Experiências</div>"
-        )
-        for ex in exps[:3]:
-            empresa = ex.get("empresa", "")
-            cargo   = ex.get("cargo", "")
-            periodo = ex.get("periodo", "")
-            if empresa or cargo:
-                html.append(
-                    f"<div style='margin-bottom:10px;padding:10px 14px;"
-                    f"background:#F0FAF8;border-radius:8px;border-left:3px solid #004D40;'>"
-                    f"<div style='font-weight:700;font-size:13px;color:#0D1B2A;'>{empresa}</div>"
-                    f"<div style='font-size:12px;color:#4A5568;margin-top:2px;'>{cargo}</div>"
-                    f"<div style='font-size:11px;color:#9AA5B4;margin-top:2px;'>{periodo}</div>"
-                    f"</div>"
-                )
-    else:
-        html.append("<div style='color:#9AA5B4;font-size:12px;font-style:italic;'>Nenhuma experiência identificada.</div>")
-
-    # Formação
-    if info.get("formacao"):
-        html.append(
-            f"<div style='margin-top:10px;font-size:11px;color:#4A5568;'>"
-            f"<span style='font-weight:700;color:#004D40;font-size:10px;"
-            f"letter-spacing:1.5px;text-transform:uppercase;'>Formação</span>"
-            f"&nbsp;&nbsp;{info['formacao']}</div>"
-        )
-
-    # Observação
-    if info.get("observacao"):
-        html.append(
-            f"<div style='margin-top:8px;font-size:11px;color:#4A5568;'>"
-            f"<span style='font-weight:700;color:#004D40;font-size:10px;"
-            f"letter-spacing:1.5px;text-transform:uppercase;'>Obs.</span>"
-            f"&nbsp;&nbsp;{info['observacao']}</div>"
-        )
-
-    return "\n".join(html) if html else _resumo_fallback(texto)
-
-
-def _resumo_fallback(texto: str) -> str:
-    """Extração manual simples usada quando a API não está disponível."""
-    if not texto or not texto.strip():
+    if not texto or len(texto.strip()) < 20:
         return "<i style='color:#9AA5B4;'>Nenhum texto extraído do documento.</i>"
 
+    # Normalizar
     texto = re.sub(r'\r\n|\r', '\n', texto)
     texto = re.sub(r'\n{3,}', '\n\n', texto).strip()
+    linhas = [l.strip() for l in texto.splitlines()]
+    tl = texto.lower()
 
-    marcadores = [
-        'experiência', 'experiencia', 'histórico profissional', 'historico profissional',
-        'formação', 'formacao', 'qualificações', 'qualificacoes',
-        'cursos', 'habilidades', 'objetivos'
+    html = []
+
+    # ── 1. CIDADE / ENDEREÇO ─────────────────────────────────────
+    cidades_vale = ["ipatinga", "coronel fabriciano", "timóteo", "timoteo",
+                    "santana do paraíso", "santana do paraiso", "belo horizonte",
+                    "governador valadares", "caratinga"]
+    cidade_enc = ""
+    for linha in linhas[:25]:   # endereço geralmente nas primeiras linhas
+        ll = linha.lower()
+        for cid in cidades_vale:
+            if cid in ll:
+                cidade_enc = linha
+                break
+        if cidade_enc:
+            break
+
+    # Fallback: procurar padrão "Cidade/UF" ou "Cidade - UF"
+    if not cidade_enc:
+        m = re.search(r'([A-ZÀ-Ú][a-zA-ZÀ-ú\s]+(?:do|de|da)?\s*[A-ZÀ-Ú][a-zA-ZÀ-ú]+)\s*/\s*MG', texto)
+        if m:
+            cidade_enc = m.group(0)
+
+    # ── 2. TELEFONE ──────────────────────────────────────────────
+    tel_enc = ""
+    m_tel = re.search(r'\(?\d{2}\)?\s?(?:9\s?)?\d{4,5}[\s\-]?\d{4}', texto)
+    if m_tel:
+        tel_enc = re.sub(r'\s+', ' ', m_tel.group(0)).strip()
+
+    # ── 3. EXPERIÊNCIAS PROFISSIONAIS ────────────────────────────
+    # Localizar seção de experiência
+    padroes_exp = [
+        r'experi[eê]nci[as]\s+profissionais?',
+        r'hist[oó]rico\s+profissional',
+        r'atua[çc][aã]o\s+profissional',
+        r'experi[eê]ncia',
     ]
-    tl  = texto.lower()
-    ini = -1
-    for m in marcadores:
-        idx = tl.find(m)
-        if idx != -1 and (ini == -1 or idx < ini):
-            ini = idx
+    ini_exp = -1
+    for p in padroes_exp:
+        m = re.search(p, tl)
+        if m:
+            ini_exp = m.start()
+            break
 
-    trecho = texto[ini:ini + 1800] if ini != -1 else texto[:1800]
-    trecho_html = trecho.replace('\n\n', '<br><br>').replace('\n', '<br>')
-    trecho_html = re.sub(
-        r'(?i)(experiência|experiencia|formação|formacao|historico profissional|'
-        r'qualificações|qualificacoes|cursos?|habilidades|objetivos?)',
-        r'<br><b style="color:#004D40;font-size:11px;font-weight:800;'
-        r'letter-spacing:1.5px;text-transform:uppercase;">\1</b><br>',
-        trecho_html
+    # Localizar seção de formação para delimitar o bloco de experiência
+    padroes_form = [
+        r'forma[çc][aã]o\s+acad[eê]mica',
+        r'forma[çc][aã]o\s+escolar',
+        r'escolaridade',
+        r'forma[çc][aã]o',
+        r'instru[çc][aã]o',
+    ]
+    ini_form = len(texto)
+    for p in padroes_form:
+        m = re.search(p, tl)
+        if m and m.start() > ini_exp:
+            ini_form = m.start()
+            break
+
+    experiencias = []
+    if ini_exp != -1:
+        bloco_exp = texto[ini_exp:ini_form]
+        linhas_exp = [l.strip() for l in bloco_exp.splitlines() if l.strip()]
+
+        # Padrões de período: 01/2020 - 12/2022 | jan/2020 a dez/2022 | 2018-2020
+        pat_periodo = re.compile(
+            r'(?:'
+            r'\d{2}/\d{4}\s*[–\-a]\s*\d{2}/\d{4}'      # 01/2020 - 12/2022
+            r'|(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*/\d{4}'
+            r'.*?(?:jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)[a-z]*/\d{4}'
+            r'|\d{2}/\d{2}/\d{4}\s*[–\-a_]\s*\d{2}/\d{2}/\d{4}'  # 17/07/2018_11/05/2020
+            r'|\d{4}\s*[–\-]\s*(?:\d{4}|atual|presente|atualmente)'  # 2018 - atual
+            r')',
+            re.IGNORECASE
+        )
+
+        # Palavras que indicam cargo
+        pat_cargo = re.compile(
+            r'\b(auxiliar|assistente|analista|técnico|tecnico|enfermeiro|recepcionista|'
+            r'atendente|operador|coordenador|supervisor|gerente|diretor|ajudante|'
+            r'colaborador|agente|consultor|vendedor|caixa|balconista|estoquista|'
+            r'faturista|secretária|secretario|motorista|porteiro|vigilante)\b',
+            re.IGNORECASE
+        )
+
+        exp_atual: dict = {}
+        for linha in linhas_exp[1:]:  # pular o título da seção
+            ll_lower = linha.lower()
+
+            # Ignorar títulos de seção
+            if any(re.search(p, ll_lower) for p in padroes_exp + padroes_form):
+                continue
+
+            # Detectar período
+            m_per = pat_periodo.search(linha)
+            if m_per:
+                if exp_atual:
+                    experiencias.append(exp_atual)
+                exp_atual = {"periodo": re.sub(r'\s+', ' ', linha).strip(),
+                             "empresa": "", "cargo": ""}
+                continue
+
+            # Detectar cargo
+            if pat_cargo.search(linha) and len(linha) < 80:
+                if exp_atual:
+                    if not exp_atual.get("cargo"):
+                        exp_atual["cargo"] = linha
+                    elif not exp_atual.get("empresa"):
+                        exp_atual["empresa"] = linha
+                continue
+
+            # Linha com "EMPRESA:" ou "CARGO:" explícitos
+            if re.match(r'empresa\s*:', ll_lower):
+                val = re.sub(r'(?i)empresa\s*:\s*', '', linha).strip()
+                if exp_atual:
+                    exp_atual["empresa"] = val
+                continue
+            if re.match(r'cargo\s*:', ll_lower):
+                val = re.sub(r'(?i)cargo\s*:\s*', '', linha).strip()
+                if exp_atual:
+                    exp_atual["cargo"] = val
+                continue
+            if re.match(r'per[ií]odo\s*:', ll_lower):
+                val = re.sub(r'(?i)per[ií]odo\s*:\s*', '', linha).strip()
+                if exp_atual and not exp_atual.get("periodo"):
+                    exp_atual["periodo"] = val
+                continue
+
+            # Linha que parece nome de empresa (maiúsculas, sem ser título)
+            if (linha.isupper() or re.match(r'^[A-ZÀ-Ú][A-Za-zÀ-ú\s\.\-&]+(?:LTDA|S\.A\.|ME|EIRELI|EPP)?$', linha)) \
+                    and len(linha) > 3 and len(linha) < 70:
+                if exp_atual and not exp_atual.get("empresa"):
+                    exp_atual["empresa"] = linha
+
+        if exp_atual and (exp_atual.get("empresa") or exp_atual.get("cargo") or exp_atual.get("periodo")):
+            experiencias.append(exp_atual)
+
+        # Limitar a 3 experiências
+        experiencias = experiencias[:3]
+
+    # ── 4. FORMAÇÃO ──────────────────────────────────────────────
+    formacao_enc = ""
+    graus = [
+        r'ensino\s+m[eé]dio\s+completo', r'ensino\s+m[eé]dio\s+incompleto',
+        r'ensino\s+fundamental\s+completo',
+        r'gradua[çc][aã]o\s+em\s+[\w\s]+',
+        r'p[oó]s[\s\-]gradua[çc][aã]o\s+em\s+[\w\s]+',
+        r't[eé]cnico\s+em\s+[\w\s]+',
+        r'superior\s+completo', r'superior\s+incompleto',
+        r'faculdade\s+de\s+[\w\s]+',
+    ]
+    for p in graus:
+        m = re.search(p, tl)
+        if m:
+            # Pegar a linha completa onde foi encontrado
+            inicio_linha = tl.rfind('\n', 0, m.start()) + 1
+            fim_linha    = tl.find('\n', m.end())
+            formacao_enc = texto[inicio_linha: fim_linha if fim_linha != -1 else m.end()+60].strip()
+            formacao_enc = formacao_enc.split('\n')[0].strip()
+            break
+
+    # ── 5. MONTAR HTML ───────────────────────────────────────────
+    # Cidade + telefone
+    meta = []
+    if cidade_enc:
+        meta.append(f"<span style='font-weight:600;color:#004D40;'>{cidade_enc[:60]}</span>")
+    if tel_enc:
+        meta.append(f"<span style='color:#4A5568;'>{tel_enc}</span>")
+    if meta:
+        html.append(
+            "<div style='margin-bottom:14px;font-size:13px;padding:10px 14px;"
+            "background:#F5F7FA;border-radius:8px;'>"
+            + "&nbsp;&nbsp;·&nbsp;&nbsp;".join(meta) + "</div>"
+        )
+
+    # Experiências
+    if experiencias:
+        html.append(
+            "<div style='font-size:9px;font-weight:800;color:#004D40;letter-spacing:2px;"
+            "text-transform:uppercase;margin-bottom:8px;'>Experiências Profissionais</div>"
+        )
+        for ex in experiencias:
+            empresa = ex.get("empresa", "").strip()
+            cargo   = ex.get("cargo",   "").strip()
+            periodo = ex.get("periodo", "").strip()
+            if not (empresa or cargo):
+                continue
+            html.append(
+                f"<div style='margin-bottom:8px;padding:10px 14px;"
+                f"background:#F0FAF8;border-radius:8px;border-left:3px solid #004D40;'>"
+                f"{'<div style=\"font-weight:700;font-size:13px;color:#0D1B2A;\">' + empresa + '</div>' if empresa else ''}"
+                f"{'<div style=\"font-size:12px;color:#4A5568;margin-top:2px;\">' + cargo + '</div>' if cargo else ''}"
+                f"{'<div style=\"font-size:11px;color:#9AA5B4;margin-top:2px;\">' + periodo + '</div>' if periodo else ''}"
+                f"</div>"
+            )
+    else:
+        # Sem experiência identificada — mostra trecho bruto da seção
+        if ini_exp != -1:
+            trecho = texto[ini_exp:ini_exp + 600].replace('\n', '<br>')
+            html.append(
+                f"<div style='font-size:12px;color:#4A5568;line-height:1.7;'>{trecho}</div>"
+            )
+        else:
+            html.append(
+                "<div style='color:#9AA5B4;font-size:12px;font-style:italic;'>"
+                "Experiência não identificada no documento.</div>"
+            )
+
+    # Formação
+    if formacao_enc:
+        html.append(
+            f"<div style='margin-top:10px;padding:8px 14px;background:#F5F7FA;"
+            f"border-radius:8px;font-size:12px;'>"
+            f"<span style='font-weight:700;font-size:9px;color:#004D40;"
+            f"letter-spacing:2px;text-transform:uppercase;'>Formação</span>"
+            f"&nbsp;&nbsp;<span style='color:#4A5568;'>{formacao_enc[:100]}</span></div>"
+        )
+
+    return "\n".join(html) if html else (
+        "<i style='color:#9AA5B4;font-size:12px;'>Resumo não disponível — "
+        "abra o documento original para ver o currículo completo.</i>"
     )
-    return trecho_html
 
-
-# Alias — o código usa resumo() em vários lugares
-def resumo(texto: str) -> str:
-    return resumo_ia(texto)
 
 
 
