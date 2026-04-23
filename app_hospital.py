@@ -12,6 +12,8 @@ import re
 import base64
 import urllib.parse
 import json
+import io
+import tempfile
 
 try:
     import pdfplumber
@@ -753,44 +755,18 @@ def iniciais(nome):
     return nome[:2].upper() if nome else "CV"
 
 def resumo(texto):
-    if not texto or not texto.strip():
-        return "<i style='color:#9AA5B4;'>Nenhum texto extraído do documento.</i>"
-
-    texto = re.sub(r'\r\n|\r', '\n', texto)
-    texto = re.sub(r'\n{3,}', '\n\n', texto).strip()
-
-    marcadores = [
-        'experiência', 'experiencia', 'histórico profissional', 'historico profissional',
-        'formação', 'formacao', 'qualificações', 'qualificacoes',
-        'cursos', 'habilidades', 'objetivos', 'resumo profissional'
-    ]
-    tl  = texto.lower()
-    ini = -1
-    for m in marcadores:
-        idx = tl.find(m)
-        if idx != -1 and (ini == -1 or idx < ini):
-            ini = idx
-
-    trecho = texto[ini:ini + 2000] if ini != -1 else texto[:2000]
-
-    if len(trecho) == 2000 and len(texto) > 2000:
-        ultimo_ponto = max(trecho.rfind('.'), trecho.rfind('\n'))
-        if ultimo_ponto > 500:
-            trecho = trecho[:ultimo_ponto + 1]
-
-    trecho_html = trecho.replace('\n\n', '<br><br>').replace('\n', '<br>')
-
-    trecho_html = re.sub(
-        r'(?i)(experiência|experiencia|formação|formacao|histórico profissional|'
-        r'historico profissional|qualificações|qualificacoes|cursos?|'
-        r'habilidades|objetivos?|resumo profissional|dados pessoais|'
-        r'informações adicionais|informacoes adicionais)',
-        r'<br><b style="color:#004D40;font-size:11px;font-weight:800;'
-        r'letter-spacing:1.5px;text-transform:uppercase;">\1</b><br>',
-        trecho_html
+    pads = ['experiencia','formacao','historico profissional','cursos','qualificacoes','habilidades']
+    tl   = texto.lower()
+    ini  = min((tl.find(p) for p in pads if tl.find(p)!=-1), default=-1)
+    r    = texto[ini:ini+1500] if ini!=-1 else texto[:1500]
+    if len(texto) > len(r): r = r.rsplit(' ',1)[0]+"..."
+    r = r.replace('\n',' ')
+    r = re.sub(
+        r'(QUALIFICACOES|FORMACAO|EXPERIENCIA|OBJETIVOS|RESUMO|CURSOS|HABILIDADES)',
+        r'<br><br><b style="color:#004D40;font-size:12px;letter-spacing:1px;">\1</b><br>',
+        r, flags=re.IGNORECASE
     )
-
-    return trecho_html
+    return r
 
 def setor_cv(assunto, texto):
     t = f"{assunto} {texto}".lower()
@@ -867,16 +843,14 @@ def buscar_curriculos(limite):
 
     # 2. Listar e-mails
     try:
-        from datetime import timedelta
-        data_corte = datetime.date.today() - timedelta(days=7)
-        data_imap  = data_corte.strftime("%d-%b-%Y")
-        status, dados = conn.search(None, f'SINCE {data_imap}')
+        status, dados = conn.search(None, 'ALL')
         if status != 'OK' or not dados[0]:
             conn.logout()
-            return 0, [f"Nenhum e-mail encontrado desde {data_imap}."]
+            return 0, ["Nenhum e-mail encontrado na caixa."]
         ids = dados[0].split()
-        ids_varrer = ids[::-1][:limite]
-        logs.append(f"{len(ids)} e-mail(s) desde {data_imap}. Varrendo os {len(ids_varrer)} mais recentes.")
+        # Mais recentes primeiro
+        ids_varrer = ids[-limite:][::-1]
+        logs.append(f"{len(ids)} e-mail(s) na caixa. Varrendo os {len(ids_varrer)} mais recentes.")
     except Exception as e:
         conn.logout()
         return 0, [f"Erro ao listar e-mails: {e}"]
@@ -931,42 +905,68 @@ def buscar_curriculos(limite):
                     logs.append(f"Anexo vazio: {fn}")
                     continue
 
-                # Salvar temp
-                fpath = os.path.join(os.getcwd(), f"_tmp_{capturados}_{int(time.time())}.tmp")
-                try:
-                    with open(fpath,'wb') as f: f.write(payload)
-                except Exception as e:
-                    logs.append(f"Erro ao salvar temp: {e}")
-                    continue
-
-                # Extrair texto
-                txt = ''
+                # ── Extrair texto direto do payload (sem arquivo temp)
+                # Usa io.BytesIO para compatibilidade com Streamlit Cloud
+                txt  = ''
                 foto = None
 
                 if fn.lower().endswith('.pdf'):
+                    # Tentativa 1: pdfplumber via BytesIO
                     if pdfplumber:
                         try:
-                            with pdfplumber.open(fpath) as pdf:
-                                txt = "\n".join(pg.extract_text() for pg in pdf.pages if pg.extract_text())
+                            buf = io.BytesIO(payload)
+                            with pdfplumber.open(buf) as pdf:
+                                paginas = []
+                                for pg in pdf.pages:
+                                    t = pg.extract_text()
+                                    if t: paginas.append(t)
+                                txt = "\n".join(paginas)
                         except Exception as e:
-                            txt = f"PDF ilegivel ({e})"
-                    if fitz and not txt:
+                            logs.append(f"pdfplumber erro: {e}")
+                            txt = ''
+
+                    # Tentativa 2: fitz (PyMuPDF) via stream
+                    if not txt and fitz:
                         try:
-                            doc = fitz.open(fpath)
+                            doc = fitz.open(stream=payload, filetype="pdf")
                             txt = "\n".join(doc[i].get_text() for i in range(len(doc)))
-                        except: pass
+                        except Exception as e:
+                            logs.append(f"fitz erro: {e}")
+
+                    # Tentativa 3: arquivo temp em /tmp (sempre gravável)
+                    if not txt:
+                        try:
+                            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
+                                tf.write(payload)
+                                tfname = tf.name
+                            if pdfplumber:
+                                with pdfplumber.open(tfname) as pdf:
+                                    txt = "\n".join(pg.extract_text() for pg in pdf.pages if pg.extract_text())
+                            os.remove(tfname)
+                        except Exception as e:
+                            logs.append(f"temp fallback erro: {e}")
+
+                    # Foto via fitz stream
                     if fitz:
                         try:
-                            doc  = fitz.open(fpath)
-                            imgs = doc.get_page_images(0) if len(doc)>0 else []
-                            if imgs: foto = doc.extract_image(imgs[0][0])["image"]
+                            doc  = fitz.open(stream=payload, filetype="pdf")
+                            imgs = doc.get_page_images(0) if len(doc) > 0 else []
+                            if imgs:
+                                foto = doc.extract_image(imgs[0][0])["image"]
                         except: pass
-                elif fn.lower().endswith(('.doc','.docx')) and docx2txt:
-                    try: txt = docx2txt.process(fpath)
-                    except Exception as e: txt = f"Erro Word: {e}"
 
-                try: os.remove(fpath)
-                except: pass
+                elif fn.lower().endswith(('.doc', '.docx')) and docx2txt:
+                    try:
+                        ext = '.docx' if fn.lower().endswith('.docx') else '.doc'
+                        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tf:
+                            tf.write(payload)
+                            tfname = tf.name
+                        txt = docx2txt.process(tfname)
+                        os.remove(tfname)
+                    except Exception as e:
+                        txt = f"Erro Word: {e}"
+
+                logs.append(f"Texto extraído: {len(txt)} chars — {fn}")
 
                 # E-mail do candidato
                 emails_pdf  = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', txt)
@@ -1333,29 +1333,48 @@ for i, setor in enumerate(SETORES):
             if c.get('arquivo_bytes') and c.get('nome_arquivo'):
                 with st.expander("Ver documento original"):
                     if c['nome_arquivo'].lower().endswith('.pdf'):
-                        b64p = base64.b64encode(c['arquivo_bytes']).decode()
+                        b64p     = base64.b64encode(c['arquivo_bytes']).decode()
+                        data_uri = f"data:application/pdf;base64,{b64p}"
+
+                        # ── Botão de download (sempre funciona) ──
+                        st.download_button(
+                            label    = f"Baixar PDF — {c['nome_arquivo']}",
+                            data     = c['arquivo_bytes'],
+                            file_name= c['nome_arquivo'],
+                            mime     = "application/pdf",
+                            use_container_width=True,
+                            key      = f"dl_{c['id']}"
+                        )
+
+                        # ── Visualizador inline via <object> (mais compatível que iframe) ──
                         st.markdown(
-                            f'<embed src="data:application/pdf;base64,{b64p}"'
-                            f' type="application/pdf" width="100%" height="700px"'
-                            f' style="border:1px solid #E2E6EA;border-radius:8px;display:block;"/>',
+                            f'<object data="{data_uri}" type="application/pdf"'
+                            f' width="100%" height="700"'
+                            f' style="border:1px solid #E2E6EA;border-radius:8px;'
+                            f'display:block;margin-top:12px;">'
+                            f'<p style="padding:20px;color:#8A94A6;font-size:13px;">'
+                            f'Seu navegador não suporta visualização inline de PDF. '
+                            f'Use o botão acima para baixar.</p>'
+                            f'</object>',
                             unsafe_allow_html=True
                         )
+
+                        # ── Link alternativo ──
                         st.markdown(
-                            f'<a href="data:application/pdf;base64,{b64p}"'
-                            f' target="_blank" download="{c["nome_arquivo"]}"'
-                            f' style="display:inline-block;margin-top:10px;font-size:12px;'
-                            f'color:#004D40;font-weight:700;letter-spacing:0.5px;text-decoration:underline;">'
-                            f'Abrir PDF em nova aba</a>',
+                            f'<a href="{data_uri}" target="_blank" download="{c["nome_arquivo"]}"'
+                            f' style="font-size:12px;color:#004D40;font-weight:600;'
+                            f'text-decoration:underline;display:inline-block;margin-top:8px;">'
+                            f'Abrir em nova aba</a>',
                             unsafe_allow_html=True
                         )
                     else:
                         st.info("Visualização direta disponível apenas para PDF.")
-                    st.download_button(
-                        f"Baixar arquivo — {c['nome_arquivo']}",
-                        c['arquivo_bytes'], file_name=c['nome_arquivo'],
-                        mime="application/octet-stream",
-                        use_container_width=True, key=f"dl_{c['id']}"
-                    )
+                        st.download_button(
+                            f"Baixar arquivo — {c['nome_arquivo']}",
+                            c['arquivo_bytes'], file_name=c['nome_arquivo'],
+                            mime="application/octet-stream",
+                            use_container_width=True, key=f"dl_{c['id']}"
+                        )
             elif c.get('manual'):
                 st.markdown("<div class='notif notif-info'>Candidato cadastrado manualmente — sem arquivo físico.</div>", unsafe_allow_html=True)
 
