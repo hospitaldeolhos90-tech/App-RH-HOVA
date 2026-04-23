@@ -753,18 +753,44 @@ def iniciais(nome):
     return nome[:2].upper() if nome else "CV"
 
 def resumo(texto):
-    pads = ['experiencia','formacao','historico profissional','cursos','qualificacoes','habilidades']
-    tl   = texto.lower()
-    ini  = min((tl.find(p) for p in pads if tl.find(p)!=-1), default=-1)
-    r    = texto[ini:ini+1500] if ini!=-1 else texto[:1500]
-    if len(texto) > len(r): r = r.rsplit(' ',1)[0]+"..."
-    r = r.replace('\n',' ')
-    r = re.sub(
-        r'(QUALIFICACOES|FORMACAO|EXPERIENCIA|OBJETIVOS|RESUMO|CURSOS|HABILIDADES)',
-        r'<br><br><b style="color:#004D40;font-size:12px;letter-spacing:1px;">\1</b><br>',
-        r, flags=re.IGNORECASE
+    if not texto or not texto.strip():
+        return "<i style='color:#9AA5B4;'>Nenhum texto extraído do documento.</i>"
+
+    texto = re.sub(r'\r\n|\r', '\n', texto)
+    texto = re.sub(r'\n{3,}', '\n\n', texto).strip()
+
+    marcadores = [
+        'experiência', 'experiencia', 'histórico profissional', 'historico profissional',
+        'formação', 'formacao', 'qualificações', 'qualificacoes',
+        'cursos', 'habilidades', 'objetivos', 'resumo profissional'
+    ]
+    tl  = texto.lower()
+    ini = -1
+    for m in marcadores:
+        idx = tl.find(m)
+        if idx != -1 and (ini == -1 or idx < ini):
+            ini = idx
+
+    trecho = texto[ini:ini + 2000] if ini != -1 else texto[:2000]
+
+    if len(trecho) == 2000 and len(texto) > 2000:
+        ultimo_ponto = max(trecho.rfind('.'), trecho.rfind('\n'))
+        if ultimo_ponto > 500:
+            trecho = trecho[:ultimo_ponto + 1]
+
+    trecho_html = trecho.replace('\n\n', '<br><br>').replace('\n', '<br>')
+
+    trecho_html = re.sub(
+        r'(?i)(experiência|experiencia|formação|formacao|histórico profissional|'
+        r'historico profissional|qualificações|qualificacoes|cursos?|'
+        r'habilidades|objetivos?|resumo profissional|dados pessoais|'
+        r'informações adicionais|informacoes adicionais)',
+        r'<br><b style="color:#004D40;font-size:11px;font-weight:800;'
+        r'letter-spacing:1.5px;text-transform:uppercase;">\1</b><br>',
+        trecho_html
     )
-    return r
+
+    return trecho_html
 
 def setor_cv(assunto, texto):
     t = f"{assunto} {texto}".lower()
@@ -841,14 +867,16 @@ def buscar_curriculos(limite):
 
     # 2. Listar e-mails
     try:
-        status, dados = conn.search(None, 'ALL')
+        from datetime import timedelta
+        data_corte = datetime.date.today() - timedelta(days=7)
+        data_imap  = data_corte.strftime("%d-%b-%Y")
+        status, dados = conn.search(None, f'SINCE {data_imap}')
         if status != 'OK' or not dados[0]:
             conn.logout()
-            return 0, ["Nenhum e-mail encontrado na caixa."]
+            return 0, [f"Nenhum e-mail encontrado desde {data_imap}."]
         ids = dados[0].split()
-        # Mais recentes primeiro
-        ids_varrer = ids[-limite:][::-1]
-        logs.append(f"{len(ids)} e-mail(s) na caixa. Varrendo os {len(ids_varrer)} mais recentes.")
+        ids_varrer = ids[::-1][:limite]
+        logs.append(f"{len(ids)} e-mail(s) desde {data_imap}. Varrendo os {len(ids_varrer)} mais recentes.")
     except Exception as e:
         conn.logout()
         return 0, [f"Erro ao listar e-mails: {e}"]
@@ -1307,8 +1335,17 @@ for i, setor in enumerate(SETORES):
                     if c['nome_arquivo'].lower().endswith('.pdf'):
                         b64p = base64.b64encode(c['arquivo_bytes']).decode()
                         st.markdown(
-                            f'<iframe src="data:application/pdf;base64,{b64p}" width="100%" height="680"'
-                            f' type="application/pdf" style="border:1px solid #E4E7EB;border-radius:8px;"></iframe>',
+                            f'<embed src="data:application/pdf;base64,{b64p}"'
+                            f' type="application/pdf" width="100%" height="700px"'
+                            f' style="border:1px solid #E2E6EA;border-radius:8px;display:block;"/>',
+                            unsafe_allow_html=True
+                        )
+                        st.markdown(
+                            f'<a href="data:application/pdf;base64,{b64p}"'
+                            f' target="_blank" download="{c["nome_arquivo"]}"'
+                            f' style="display:inline-block;margin-top:10px;font-size:12px;'
+                            f'color:#004D40;font-weight:700;letter-spacing:0.5px;text-decoration:underline;">'
+                            f'Abrir PDF em nova aba</a>',
                             unsafe_allow_html=True
                         )
                     else:
