@@ -2557,8 +2557,9 @@ with abas[8]:
             .hova-card-foto {
                 width: 110px; height: 110px;
                 border-radius: 50%;
-                object-fit: cover;
-                object-position: center top;
+                background-size: cover;
+                background-position: center center;
+                background-repeat: no-repeat;
                 border: 4px solid #E0F2F1;
                 display: block;
                 margin: 0 auto 16px auto;
@@ -2632,8 +2633,9 @@ with abas[8]:
                         # Avatar
                         if f.get('foto'):
                             b64f = base64.b64encode(f['foto']).decode()
-                            av   = (f"<img src='data:image/jpeg;base64,{b64f}'"
-                                    f" class='hova-card-foto'>")
+                            av   = (f"<div class='hova-card-foto'"
+                                    f" style='background-image:url(\"data:image/jpeg;base64,{b64f}\");'>"
+                                    f"</div>")
                         else:
                             av   = (f"<div class='hova-card-iniciais'>"
                                     f"{iniciais(f['nome'])}</div>")
