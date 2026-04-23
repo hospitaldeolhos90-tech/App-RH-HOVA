@@ -2182,8 +2182,15 @@ with abas[8]:
                     av_html = (f"<img src='data:image/jpeg;base64,{b64f}'"
                                f" class='func-avatar-xl-img'>")
                 else:
-                    av_html = (f"<div class='func-avatar-xl'>"
-                               f"{iniciais(func['nome'])}</div>")
+                    av_html = (
+                        f"<div style='width:110px;height:110px;border-radius:50%;"
+                        f"background:linear-gradient(145deg,#004D40,#26A69A);"
+                        f"color:#FFF;display:flex;justify-content:center;"
+                        f"align-items:center;font-size:34px;font-weight:900;"
+                        f"margin:0 auto 16px auto;"
+                        f"box-shadow:0 6px 24px rgba(0,77,64,0.3);'>"
+                        f"{iniciais(func['nome'])}</div>"
+                    )
 
                 ntw_badge = (
                     "<span style='background:#DCFCE7;color:#166534;font-size:10px;"
@@ -2193,11 +2200,17 @@ with abas[8]:
                 )
 
                 st.markdown(
-                    f"<div class='dossie-header'>"
+                    f"<div style='background:linear-gradient(160deg,#F2FAF8,#E6F4F1);"
+                    f"border:1px solid #B2DFDB;border-radius:20px;"
+                    f"padding:32px 40px 24px;text-align:center;margin-bottom:20px;"
+                    f"position:relative;overflow:hidden;'>"
+                    f"<div style='position:absolute;left:0;top:0;bottom:0;width:5px;"
+                    f"background:linear-gradient(180deg,#004D40,#26A69A);"
+                    f"border-radius:20px 0 0 20px;'></div>"
                     f"{av_html}"
-                    f"<div style='font-size:24px;font-weight:900;color:#0D1B2A;"
+                    f"<div style='font-size:22px;font-weight:900;color:#0D1B2A;"
                     f"margin-bottom:4px;'>{func['nome']}</div>"
-                    f"<div style='font-size:12px;color:#0891B2;font-weight:700;"
+                    f"<div style='font-size:12px;color:#004D40;font-weight:700;"
                     f"letter-spacing:1.5px;text-transform:uppercase;'>"
                     f"{func.get('cargo_atual','—')}</div>"
                     f"<div style='font-size:11px;color:#9AA5B4;margin-top:6px;'>"
@@ -2528,68 +2541,77 @@ with abas[8]:
                                 f"<div class='notif notif-warn'>{msg_ntw}</div>",
                                 unsafe_allow_html=True)
 
-        # ── GRID DE CARDS ────────────────────────────────────────
+        # ── GRID DE CARDS — Verde Petróleo, st.columns nativo ────
         else:
+            n_ativos = len(ativos)
             st.markdown(
                 f"<div style='font-size:12px;color:#8A94A6;margin-bottom:20px;'>"
-                f"<b style='color:#0891B2;font-size:24px;font-weight:900;'>{len(ativos)}</b>"
+                f"<b style='color:#004D40;font-size:24px;font-weight:900;'>{n_ativos}</b>"
                 f" colaborador(es) ativo(s)</div>",
                 unsafe_allow_html=True)
 
-            n_cols = 4
-            rows   = [ativos[i:i+n_cols] for i in range(0, len(ativos), n_cols)]
-
-            for row in rows:
-                cards_html = "<div style='display:grid;grid-template-columns:" \
-                             f"repeat({len(row)},1fr);gap:16px;margin-bottom:0;'>"
-                for f in row:
-                    ini_f = f['data_inicio_contrato'].strftime('%d/%m/%Y') \
-                            if f.get('data_inicio_contrato') else '—'
-                    if f.get('foto'):
-                        b64f = base64.b64encode(f['foto']).decode()
-                        av   = (f"<img src='data:image/jpeg;base64,{b64f}'"
-                                f" style='width:84px;height:84px;border-radius:50%;"
-                                f"object-fit:cover;border:3px solid #0891B2;"
-                                f"display:block;margin:0 auto 14px;'>"  )
-                    else:
-                        av = (f"<div style='width:84px;height:84px;border-radius:50%;"
-                              f"background:linear-gradient(145deg,#0891B2,#06B6D4);"
-                              f"color:#FFF;display:flex;justify-content:center;"
-                              f"align-items:center;font-size:28px;font-weight:900;"
-                              f"margin:0 auto 14px;box-shadow:0 4px 14px "
-                              f"rgba(8,145,178,0.25);'>{iniciais(f['nome'])}</div>")
-
-                    ntw_dot = (
-                        "<div style='width:8px;height:8px;border-radius:50%;"
-                        "background:#22C55E;display:inline-block;margin-right:4px;'></div>"
-                        if f.get('ntw_enviado') else ""
-                    )
-                    cargo_exib = f.get('cargo_atual') or f.get('setor','—')
-                    cards_html += (
-                        f"<div class='func-card-v2'>"
-                        f"{av}"
-                        f"<div style='font-size:13px;font-weight:800;color:#0D1B2A;"
-                        f"text-transform:uppercase;line-height:1.3;margin-bottom:4px;'>"
-                        f"{f['nome']}</div>"
-                        f"<div style='font-size:11px;color:#0891B2;font-weight:700;"
-                        f"letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px;'>"
-                        f"{cargo_exib}</div>"
-                        f"<div style='font-size:10px;color:#9AA5B4;margin-bottom:14px;'>"
-                        f"{ntw_dot}Desde {ini_f}</div>"
-                        f"</div>"
-                    )
-                cards_html += "</div>"
-                st.markdown(cards_html, unsafe_allow_html=True)
-
-                # Botões abaixo de cada card (fora do HTML)
-                btn_cols = st.columns(len(row))
+            N = 4   # colunas por linha
+            for i in range(0, n_ativos, N):
+                row   = ativos[i:i+N]
+                cols  = st.columns(N)
                 for j, f in enumerate(row):
-                    with btn_cols[j]:
+                    with cols[j]:
+                        ini_f = (f['data_inicio_contrato'].strftime('%d/%m/%Y')
+                                 if f.get('data_inicio_contrato') else '—')
+                        cargo_exib = f.get('cargo_atual') or f.get('setor','—')
+                        ntw_badge  = (
+                            "<span style='background:#DCFCE7;color:#166534;"
+                            "font-size:9px;font-weight:700;padding:2px 8px;"
+                            "border-radius:20px;'>NTW</span> "
+                            if f.get('ntw_enviado') else ""
+                        )
+                        # Avatar
+                        if f.get('foto'):
+                            b64f = base64.b64encode(f['foto']).decode()
+                            av   = (f"<img src='data:image/jpeg;base64,{b64f}'"
+                                    f" style='width:88px;height:88px;border-radius:50%;"
+                                    f"object-fit:cover;border:3px solid #004D40;"
+                                    f"display:block;margin:0 auto 14px;"
+                                    f"box-shadow:0 4px 14px rgba(0,77,64,0.2);'>")
+                        else:
+                            av = (
+                                f"<div style='width:88px;height:88px;border-radius:50%;"
+                                f"background:linear-gradient(145deg,#004D40,#26A69A);"
+                                f"color:#FFF;display:flex;justify-content:center;"
+                                f"align-items:center;font-size:28px;font-weight:900;"
+                                f"margin:0 auto 14px;"
+                                f"box-shadow:0 4px 14px rgba(0,77,64,0.25);'>"
+                                f"{iniciais(f['nome'])}</div>"
+                            )
+
+                        st.markdown(
+                            f"<div style='background:#FFF;border:1px solid #E2E6EA;"
+                            f"border-radius:16px;padding:24px 14px 16px;"
+                            f"text-align:center;"
+                            f"box-shadow:0 2px 10px rgba(0,0,0,0.05);"
+                            f"transition:box-shadow 0.2s;'>"
+                            f"{av}"
+                            f"<div style='font-size:12px;font-weight:800;color:#0D1B2A;"
+                            f"text-transform:uppercase;line-height:1.3;"
+                            f"margin-bottom:4px;'>{ntw_badge}{f['nome']}</div>"
+                            f"<div style='font-size:11px;color:#004D40;font-weight:700;"
+                            f"letter-spacing:0.5px;text-transform:uppercase;"
+                            f"margin-bottom:4px;'>{cargo_exib}</div>"
+                            f"<div style='font-size:10px;color:#9AA5B4;"
+                            f"margin-bottom:16px;'>Desde {ini_f}</div>"
+                            f"</div>",
+                            unsafe_allow_html=True
+                        )
+                        # Botão centralizado abaixo do card
                         if st.button("Acessar Perfil",
                                      key=f"perfil_{f['id']}",
                                      use_container_width=True):
                             st.session_state.perfil_foco = f['id']
                             st.rerun()
+
+                # Colunas vazias na última linha
+                for j in range(len(row), N):
+                    cols[j].empty()
                 st.write("")
 
     # ════════════════════════════════════════════════════════════
