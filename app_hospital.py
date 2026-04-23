@@ -637,21 +637,90 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
     display: block;
 }
 
-/* ── Selectbox/Slider Streamlit — accent verde ── */
-.stSelectbox [data-baseweb="select"] > div {
-    border-color: #D1D8E0 !important;
-    border-radius: 8px !important;
+/* ═══════════════════════════════════════
+   MÓDULO FUNCIONÁRIOS
+═══════════════════════════════════════ */
+.func-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
 }
-.stSelectbox [data-baseweb="select"] > div:focus-within {
-    border-color: #004D40 !important;
-    box-shadow: 0 0 0 2px rgba(0,77,64,0.1) !important;
+.func-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E6EA;
+    border-radius: 16px;
+    padding: 24px 16px 18px;
+    text-align: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    transition: transform 0.18s, box-shadow 0.18s;
+    animation: fadeUp 0.3s ease forwards;
+}
+.func-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0,77,64,0.12);
+}
+.func-avatar {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #004D40, #26A69A);
+    color: #FFF;
+    display: flex; justify-content: center; align-items: center;
+    font-size: 26px; font-weight: 800;
+    margin: 0 auto 14px auto;
+    box-shadow: 0 4px 14px rgba(0,77,64,0.25);
+}
+.func-avatar-img {
+    width: 80px; height: 80px;
+    border-radius: 50%; object-fit: cover;
+    border: 3px solid #B2DFDB;
+    margin: 0 auto 14px auto; display: block;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+}
+.func-nome {
+    font-size: 13px; font-weight: 800;
+    color: #0D1B2A; text-transform: uppercase;
+    letter-spacing: 0.3px; line-height: 1.3;
+    margin-bottom: 4px;
+}
+.func-cargo {
+    font-size: 11px; color: #004D40;
+    font-weight: 600; letter-spacing: 0.5px;
+    text-transform: uppercase; margin-bottom: 4px;
+}
+.func-data {
+    font-size: 10px; color: #9AA5B4;
+    margin-bottom: 14px;
+}
+.dossie-card {
+    background: #FFFFFF;
+    border: 1px solid #E2E6EA;
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+    animation: fadeUp 0.3s ease;
+}
+.ex-func-card {
+    background: #F8FAFB;
+    border: 1px solid #E2E6EA;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 8px;
+    border-left: 3px solid #9AA5B4;
 }
 
-/* ── Forçar accent-color global para verde (radio, checkbox, range) ── */
-input[type="radio"]   { accent-color: #004D40 !important; }
-input[type="checkbox"]{ accent-color: #004D40 !important; }
-input[type="range"]   { accent-color: #26A69A !important; }
-
+/* ── Abas internas do módulo ── */
+.mod-tab-btn {
+    display: inline-block;
+    padding: 8px 20px;
+    border-radius: 20px;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    cursor: pointer; margin-right: 8px; margin-bottom: 16px;
+    border: 1.5px solid #E2E6EA;
+    background: #FFFFFF; color: #9AA5B4;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -667,9 +736,10 @@ def _serial(obj):
 def salvar_json():
     try:
         dados = {
-            "aguardando":  st.session_state.aguardando_retorno,
-            "agendados":   st.session_state.agendados,
-            "contratados": st.session_state.contratados,
+            "aguardando":      st.session_state.aguardando_retorno,
+            "agendados":       st.session_state.agendados,
+            "contratados":     st.session_state.contratados,
+            "ex_funcionarios": st.session_state.ex_funcionarios,
         }
         with open(ARQUIVO_MEMORIA, "w", encoding="utf-8") as f:
             json.dump(dados, f, default=_serial, indent=2, ensure_ascii=False)
@@ -698,9 +768,10 @@ def carregar_json():
         if os.path.exists(ARQUIVO_MEMORIA):
             with open(ARQUIVO_MEMORIA, "r", encoding="utf-8") as f:
                 d = json.load(f)
-            st.session_state.aguardando_retorno = _fix_datas(d.get("aguardando", []))
-            st.session_state.agendados          = _fix_datas(d.get("agendados",  []))
-            st.session_state.contratados        = _fix_datas(d.get("contratados",[]))
+            st.session_state.aguardando_retorno = _fix_datas(d.get("aguardando",      []))
+            st.session_state.agendados          = _fix_datas(d.get("agendados",       []))
+            st.session_state.contratados        = _fix_datas(d.get("contratados",     []))
+            st.session_state.ex_funcionarios    = _fix_datas(d.get("ex_funcionarios", []))
             # Constrói set de e-mails já em outras etapas (para dedup)
             proc = set()
             for lst in [st.session_state.aguardando_retorno,
@@ -720,8 +791,10 @@ def carregar_json():
 _def = {
     'cvs': [], 'agendados': [], 'contratados': [],
     'aguardando_retorno': [], 'cvs_antigos': [],
+    'ex_funcionarios': [],
     'historico_emails': set(),
     'candidato_foco': None, 'contratar_foco': None,
+    'perfil_foco': None,       # ID do funcionário com dossiê aberto
     'pular_idx': {},
     'sync_msg': None, 'sync_logs': [],
     'executar_sync': False, 'limite_sync': 30,
@@ -1326,12 +1399,13 @@ with st.sidebar:
 
     st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.08);margin:18px 0;'>", unsafe_allow_html=True)
     if st.button("LIMPAR MEMORIA", use_container_width=True):
-        for k in ['cvs','agendados','contratados','aguardando_retorno','cvs_antigos']:
+        for k in ['cvs','agendados','contratados','aguardando_retorno','cvs_antigos','ex_funcionarios']:
             st.session_state[k] = []
         st.session_state.historico_emails = set()
         st.session_state._processados     = set()
         st.session_state.candidato_foco   = None
         st.session_state.contratar_foco   = None
+        st.session_state.perfil_foco      = None
         st.session_state.pular_idx        = {}
         if os.path.exists(ARQUIVO_MEMORIA): os.remove(ARQUIVO_MEMORIA)
         st.success("Memoria zerada.")
@@ -1862,37 +1936,279 @@ with abas[7]:
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
-# ── ABA 8: CONTRATADOS ────────────────────
+# ── ABA 8: GESTÃO DE FUNCIONÁRIOS ─────────
 with abas[8]:
-    con_list = _busca(st.session_state.contratados, termo)
-    st.markdown(f"<div style='margin-bottom:20px;'>"
-                f"<span style='font-size:26px;font-weight:800;color:#004D40;'>{len(con_list)}</span>"
-                f" <span style='font-size:13px;color:#8A94A6;'>admissão(ões) registrada(s)</span></div>",
-                unsafe_allow_html=True)
-    if not con_list:
-        st.markdown('<div class="empty"><div class="e-title">SEM CONTRATADOS</div>'
-                    '<div class="e-sub">Nenhuma admissão registrada ainda.</div></div>',
-                    unsafe_allow_html=True)
+
+    # ── Sub-navegação: Ativos / Histórico / Adicionar ──────────
+    sub = st.radio("", ["Funcionários Ativos", "Histórico de Desligamentos"],
+                   horizontal=True, label_visibility="collapsed", key="sub_func")
+
+    # ══════════════════════════════════════════════════════════
+    # PAINEL LATERAL: Adicionar colaborador antigo
+    # ══════════════════════════════════════════════════════════
+    with st.expander("Adicionar Colaborador Existente"):
+        with st.form("form_colab_antigo", clear_on_submit=True):
+            st.markdown("<div style='font-size:13px;font-weight:700;color:#004D40;"
+                        "margin-bottom:16px;'>CADASTRAR COLABORADOR JÁ ATIVO</div>",
+                        unsafe_allow_html=True)
+            ca1, ca2 = st.columns(2)
+            ca_nome  = ca1.text_input("Nome completo *", placeholder="Ex: Maria da Silva")
+            ca_cargo = ca2.text_input("Cargo *",         placeholder="Ex: Recepcionista")
+            ca3, ca4 = st.columns(2)
+            ca_setor = ca3.selectbox("Setor", ["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
+                                                "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
+                                                "FATURAMENTO","JOVEM APRENDIZ"])
+            ca_adm   = ca4.date_input("Data de admissão",
+                                       value=datetime.date.today(),
+                                       key="ca_adm")
+            ca5, ca6 = st.columns(2)
+            ca_tel   = ca5.text_input("Telefone / WhatsApp", placeholder="31999990000")
+            ca_email = ca6.text_input("E-mail",              placeholder="colaborador@email.com")
+            ca_obs   = st.text_area("Observações", placeholder="CNH, certificações, observações...",
+                                    height=80)
+            ok_ca = st.form_submit_button("CADASTRAR COLABORADOR", type="primary",
+                                           use_container_width=True)
+
+        if ok_ca:
+            if ca_nome and ca_cargo:
+                novo_func = {
+                    "id":                  str(int(time.time()*1000)),
+                    "nome":                ca_nome.upper().strip(),
+                    "setor":               ca_setor,
+                    "email":               ca_email.lower().strip(),
+                    "telefone":            ''.join(filter(str.isdigit, ca_tel)),
+                    "data_inicio_contrato": ca_adm,
+                    "hora_inicio_contrato": datetime.time(8,0),
+                    "cargo_atual":         ca_cargo.strip(),
+                    "observacoes":         ca_obs.strip(),
+                    "foto":                None,
+                    "manual":              True,
+                    "email_admissao_enviado": False,
+                }
+                st.session_state.contratados.append(novo_func)
+                salvar_json()
+                st.success(f"{ca_nome.upper()} cadastrado com sucesso.")
+                st.rerun()
+            else:
+                st.error("Nome e cargo são obrigatórios.")
+
+    st.write("")
+
+    # ══════════════════════════════════════════════════════════
+    # ATIVOS
+    # ══════════════════════════════════════════════════════════
+    if sub == "Funcionários Ativos":
+        ativos = _busca(st.session_state.contratados, termo)
+        ativos = sorted(ativos,
+                        key=lambda x: x.get('data_inicio_contrato') or datetime.date.min)
+
+        if not ativos:
+            st.markdown('<div class="empty"><div class="e-title">NENHUM FUNCIONÁRIO ATIVO</div>'
+                        '<div class="e-sub">Cadastre colaboradores usando o painel acima.</div></div>',
+                        unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f"<div style='font-size:12px;color:#8A94A6;margin-bottom:18px;'>"
+                f"<b style='color:#004D40;font-size:22px;font-weight:900;'>{len(ativos)}</b>"
+                f" colaborador(es) ativo(s)</div>",
+                unsafe_allow_html=True
+            )
+
+            # ── DOSSIÊ ABERTO ──────────────────────────────────
+            if st.session_state.perfil_foco:
+                func = next((f for f in st.session_state.contratados
+                             if f['id'] == st.session_state.perfil_foco), None)
+
+                if func:
+                    ini_f = func['data_inicio_contrato'].strftime('%d/%m/%Y') \
+                            if func.get('data_inicio_contrato') else '—'
+
+                    # Avatar
+                    if func.get('foto'):
+                        b64f = base64.b64encode(func['foto']).decode()
+                        av_html = (f"<img src='data:image/jpeg;base64,{b64f}'"
+                                   f" class='func-avatar-img'"
+                                   f" style='width:90px;height:90px;display:block;"
+                                   f"margin:0 auto 12px;'>")
+                    else:
+                        av_html = (f"<div class='func-avatar' style='width:90px;height:90px;"
+                                   f"font-size:28px;'>{iniciais(func['nome'])}</div>")
+
+                    st.markdown(
+                        f"<div class='dossie-card'>"
+                        f"<div style='text-align:center;margin-bottom:20px;'>"
+                        f"{av_html}"
+                        f"<div style='font-size:20px;font-weight:900;color:#0D1B2A;'>{func['nome']}</div>"
+                        f"<div style='font-size:12px;color:#004D40;font-weight:700;"
+                        f"letter-spacing:1px;text-transform:uppercase;margin-top:4px;'>"
+                        f"{func.get('cargo_atual','—')}</div>"
+                        f"<div style='font-size:11px;color:#9AA5B4;margin-top:4px;'>"
+                        f"Desde {ini_f}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True
+                    )
+
+                    # Formulário de edição
+                    with st.form(f"form_dossie_{func['id']}"):
+                        st.markdown("<div style='font-size:11px;font-weight:700;color:#004D40;"
+                                    "letter-spacing:2px;text-transform:uppercase;"
+                                    "margin-bottom:14px;'>Editar Dados</div>",
+                                    unsafe_allow_html=True)
+                        d1, d2 = st.columns(2)
+                        novo_nome  = d1.text_input("Nome",    value=func.get('nome',''))
+                        novo_cargo = d2.text_input("Cargo",   value=func.get('cargo_atual',''))
+                        d3, d4 = st.columns(2)
+                        novo_tel   = d3.text_input("Telefone/WhatsApp",
+                                                   value=func.get('telefone',''))
+                        novo_email = d4.text_input("E-mail",  value=func.get('email',''))
+                        d5, d6 = st.columns(2)
+                        novo_setor = d5.selectbox("Setor",
+                                                  ["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
+                                                   "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
+                                                   "FATURAMENTO","JOVEM APRENDIZ"],
+                                                  index=["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
+                                                          "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
+                                                          "FATURAMENTO","JOVEM APRENDIZ"]
+                                                  .index(func.get('setor','TRIAGEM GERAL'))
+                                                  if func.get('setor') in
+                                                  ["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
+                                                   "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
+                                                   "FATURAMENTO","JOVEM APRENDIZ"] else 0)
+                        novo_adm = d6.date_input("Data de admissão",
+                                                  value=func.get('data_inicio_contrato')
+                                                        or datetime.date.today())
+                        novo_obs = st.text_area("Observações / Feedback",
+                                                value=func.get('observacoes',''),
+                                                height=100,
+                                                placeholder="Anotações, feedbacks, certificações...")
+
+                        sb1, sb2, sb3 = st.columns(3)
+                        salvar_ok   = sb1.form_submit_button("SALVAR",
+                                                              type="primary",
+                                                              use_container_width=True)
+                        fechar_ok   = sb2.form_submit_button("FECHAR",
+                                                              use_container_width=True)
+                        desligar_ok = sb3.form_submit_button("REGISTRAR DESLIGAMENTO",
+                                                              use_container_width=True)
+
+                    if salvar_ok:
+                        func['nome']                = novo_nome.upper().strip()
+                        func['cargo_atual']         = novo_cargo.strip()
+                        func['telefone']            = ''.join(filter(str.isdigit, novo_tel))
+                        func['email']               = novo_email.lower().strip()
+                        func['setor']               = novo_setor
+                        func['data_inicio_contrato'] = novo_adm
+                        func['observacoes']         = novo_obs.strip()
+                        salvar_json()
+                        st.success("Dados atualizados.")
+                        st.rerun()
+
+                    if fechar_ok:
+                        st.session_state.perfil_foco = None
+                        st.rerun()
+
+                    if desligar_ok:
+                        func['data_desligamento'] = datetime.date.today()
+                        st.session_state.ex_funcionarios.append(func)
+                        st.session_state.contratados.remove(func)
+                        st.session_state.perfil_foco = None
+                        salvar_json()
+                        st.success(f"{func['nome']} movido para Histórico de Desligamentos.")
+                        st.rerun()
+
+                    # WhatsApp direto
+                    tel_wa = ''.join(filter(str.isdigit, func.get('telefone','')))
+                    if tel_wa:
+                        msg_wa = f"Olá {func['nome'].title()}, aqui é o RH do Hospital de Olhos Vale do Aço."
+                        url_wa = f"https://wa.me/55{tel_wa}?text={urllib.parse.quote(msg_wa)}"
+                        st.markdown(
+                            f'<a href="{url_wa}" target="_blank" class="wa-btn"'
+                            f' style="display:block;margin-top:12px;">'
+                            f'Enviar Mensagem (WhatsApp)</a>',
+                            unsafe_allow_html=True
+                        )
+
+                    st.markdown("</div>", unsafe_allow_html=True)
+
+            # ── GRID DE CARDS ──────────────────────────────────
+            else:
+                # CSS grid via HTML puro (st.columns não faz grid responsivo)
+                cards_html = "<div class='func-grid'>"
+                for f in ativos:
+                    ini_f = f['data_inicio_contrato'].strftime('%d/%m/%Y') \
+                            if f.get('data_inicio_contrato') else '—'
+                    if f.get('foto'):
+                        b64f = base64.b64encode(f['foto']).decode()
+                        av = (f"<img src='data:image/jpeg;base64,{b64f}'"
+                              f" class='func-avatar-img'>")
+                    else:
+                        av = (f"<div class='func-avatar'>{iniciais(f['nome'])}</div>")
+
+                    cargo_exib = f.get('cargo_atual') or f.get('setor','—')
+
+                    cards_html += (
+                        f"<div class='func-card'>"
+                        f"{av}"
+                        f"<div class='func-nome'>{f['nome']}</div>"
+                        f"<div class='func-cargo'>{cargo_exib}</div>"
+                        f"<div class='func-data'>Desde {ini_f}</div>"
+                        f"</div>"
+                    )
+                cards_html += "</div>"
+                st.markdown(cards_html, unsafe_allow_html=True)
+
+                # Botões "Acessar Perfil" — um por funcionário (fora do HTML)
+                n_cols = 4
+                rows = [ativos[i:i+n_cols] for i in range(0, len(ativos), n_cols)]
+                for row in rows:
+                    cols = st.columns(n_cols)
+                    for j, f in enumerate(row):
+                        with cols[j]:
+                            if st.button("Acessar Perfil",
+                                         key=f"perfil_{f['id']}",
+                                         use_container_width=True):
+                                st.session_state.perfil_foco = f['id']
+                                st.rerun()
+                    # Preencher colunas vazias na última linha
+                    for j in range(len(row), n_cols):
+                        cols[j].empty()
+
+    # ══════════════════════════════════════════════════════════
+    # HISTÓRICO DE DESLIGAMENTOS
+    # ══════════════════════════════════════════════════════════
     else:
-        for c in sorted(con_list, key=lambda x: x.get('data_inicio_contrato') or datetime.date.min, reverse=True):
-            ini_f = c['data_inicio_contrato'].strftime('%d/%m/%Y') if c.get('data_inicio_contrato') else '—'
-            hor_f = c['hora_inicio_contrato'].strftime('%H:%M') if c.get('hora_inicio_contrato') else '—'
-            em_ok = "E-mail enviado" if c.get('email_admissao_enviado') else "E-mail pendente"
-            st.markdown(f"""
-            <div class="card-contratado">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                    <div>
-                        <div style="font-size:18px;font-weight:800;color:#004D40;">{c['nome']}</div>
-                        <div style="margin-top:6px;font-size:13px;color:#2D6A4F;">
-                            Inicio: <b>{ini_f}</b> às <b>{hor_f}</b> &nbsp;·&nbsp; <b>{c.get('setor','—')}</b>
-                        </div>
-                        <div style="margin-top:4px;font-size:12px;color:#4A5568;">
-                            {c.get('email','—')} &nbsp;·&nbsp; {c.get('telefone','—')} &nbsp;·&nbsp; {em_ok}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+        ex_list = _busca(st.session_state.ex_funcionarios, termo)
+        ex_list = sorted(ex_list,
+                         key=lambda x: x.get('data_desligamento') or datetime.date.min,
+                         reverse=True)
+
+        if not ex_list:
+            st.markdown('<div class="empty"><div class="e-title">NENHUM DESLIGAMENTO</div>'
+                        '<div class="e-sub">O histórico de ex-funcionários aparecerá aqui.</div></div>',
+                        unsafe_allow_html=True)
+        else:
+            st.markdown(
+                f"<div style='font-size:12px;color:#8A94A6;margin-bottom:16px;'>"
+                f"<b style='color:#9AA5B4;font-size:18px;'>{len(ex_list)}</b>"
+                f" desligamento(s) registrado(s)</div>",
+                unsafe_allow_html=True
+            )
+            for f in ex_list:
+                adm_f  = f['data_inicio_contrato'].strftime('%d/%m/%Y') \
+                         if f.get('data_inicio_contrato') else '—'
+                dem_f  = f['data_desligamento'].strftime('%d/%m/%Y') \
+                         if f.get('data_desligamento') else '—'
+                st.markdown(
+                    f"<div class='ex-func-card'>"
+                    f"<div style='font-weight:700;font-size:14px;color:#4A5568;'>{f['nome']}</div>"
+                    f"<div style='font-size:12px;color:#9AA5B4;margin-top:3px;'>"
+                    f"{f.get('cargo_atual') or f.get('setor','—')}"
+                    f" &nbsp;·&nbsp; Admissão: {adm_f}"
+                    f" &nbsp;·&nbsp; Desligamento: {dem_f}"
+                    f"</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
 
 # ── ABA 9: BANCO ANTIGOS ──────────────────
 with abas[9]:
