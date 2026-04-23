@@ -797,6 +797,7 @@ _def = {
     'candidato_foco': None, 'contratar_foco': None,
     'perfil_foco': None,
     'nao_contratar_foco': None,
+    'rejeitar_foco': None,
     'pular_idx': {},
     'sync_msg': None, 'sync_logs': [],
     'executar_sync': False, 'limite_sync': 30,
@@ -1768,47 +1769,82 @@ for i, setor in enumerate(SETORES):
                 st.markdown("<div class='notif notif-info'>Candidato cadastrado manualmente — sem arquivo físico.</div>", unsafe_allow_html=True)
 
             st.write("")
-            br, _, __ = st.columns(3)
-            with br:
-                if st.button("REJEITAR", key=f"rej_{c['id']}", type="secondary", use_container_width=True):
-                    mr = (f"Olá {c['nome'].title()},\n\n"
-                          f"Agradecemos seu interesse no Hospital de Olhos Vale do Aço. "
-                          f"No momento seu perfil não se enquadra nas vagas disponíveis, "
-                          f"mas manteremos seu currículo em nossa base de dados.\n\n"
-                          f"Atenciosamente,\nEquipe de RH — HOVA")
-                    with st.spinner("Notificando candidato..."):
-                        send_email(c['email'], "HOVA — Processo Seletivo", mr)
-                    st.session_state.cvs.remove(c)
-                    nt  = len([x for x in st.session_state.cvs if x['setor']==setor])
-                    idx = st.session_state.pular_idx.get(setor,0)
-                    st.session_state.pular_idx[setor] = max(0, min(idx, nt-1)) if nt>0 else 0
-                    salvar_json()
+
+            # ── Confirmação de rejeição com mensagem editável ──
+            if st.session_state.get('rejeitar_foco') == c['id']:
+                st.markdown(
+                    "<div style='background:#FFFAF8;border:1.5px solid #E5BCBC;"
+                    "border-radius:14px;padding:22px 26px;margin-top:8px;'>",
+                    unsafe_allow_html=True)
+                st.markdown(
+                    "<div style='font-size:13px;font-weight:700;color:#9B2C2C;"
+                    "margin-bottom:14px;'>Confirmar Rejeicao — revisar mensagem antes de enviar</div>",
+                    unsafe_allow_html=True)
+
+                msg_rej_padrao = (
+                    f"Olá {c['nome'].title()}, tudo bem?\n\n"
+                    f"Agradecemos muito seu interesse em fazer parte da equipe "
+                    f"do Hospital de Olhos Vale do Aço.\n\n"
+                    f"Após análise do seu currículo, informamos que no momento "
+                    f"não temos uma vaga disponível compatível com o seu perfil. "
+                    f"Seu currículo ficará em nossa base de dados e entraremos "
+                    f"em contato caso surja uma oportunidade.\n\n"
+                    f"Agradecemos sua compreensão e desejamos sucesso!\n\n"
+                    f"Atenciosamente,\nEquipe de RH — Hospital de Olhos Vale do Aço"
+                )
+
+                msg_rej_edit = st.text_area(
+                    "Mensagem que será enviada:",
+                    value=msg_rej_padrao,
+                    height=200,
+                    key=f"msg_rej_{c['id']}")
+
+                rc1, rc2 = st.columns(2)
+                with rc1:
+                    if st.button("Cancelar", key=f"rej_canc_{c['id']}",
+                                 use_container_width=True):
+                        st.session_state['rejeitar_foco'] = None
+                        st.rerun()
+                with rc2:
+                    if st.button("CONFIRMAR E ENVIAR", key=f"rej_env_{c['id']}",
+                                 type="primary", use_container_width=True):
+                        with st.spinner("Notificando candidato..."):
+                            send_email(c['email'],
+                                       "Hospital de Olhos Vale do Aço — Processo Seletivo",
+                                       msg_rej_edit)
+                        st.session_state.cvs.remove(c)
+                        nt  = len([x for x in st.session_state.cvs if x['setor']==setor])
+                        idx = st.session_state.pular_idx.get(setor, 0)
+                        st.session_state.pular_idx[setor] = (
+                            max(0, min(idx, nt-1)) if nt > 0 else 0)
+                        st.session_state['rejeitar_foco'] = None
+                        salvar_json()
+                        st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # ── Estrela funcional via form (sem botão visível extra) ──
+            ja_fav = any(f['id'] == c['id'] for f in st.session_state.favoritos)
+            with st.form(key=f"form_star_{c['id']}"):
+                st.markdown(
+                    f"<div style='text-align:right;margin-top:-8px;margin-bottom:4px;'>"
+                    f"<span style='font-size:11px;color:#9AA5B4;'>"
+                    f"{'Favoritado — clique para remover' if ja_fav else 'Clique na estrela para favoritar'}"
+                    f"</span></div>",
+                    unsafe_allow_html=True)
+                submitted = st.form_submit_button(
+                    "★ Favoritado" if ja_fav else "☆ Favoritar",
+                    use_container_width=False)
+                if submitted:
+                    if ja_fav:
+                        st.session_state.favoritos = [
+                            f for f in st.session_state.favoritos if f['id'] != c['id']
+                        ]
+                    else:
+                        st.session_state.favoritos.append(c)
                     st.rerun()
 
-            # Botão invisível da estrela — posicionado via CSS sobre o ★ do card
-            ja_fav = any(f['id'] == c['id'] for f in st.session_state.favoritos)
-            st.markdown(
-                f"<style>"
-                f"div[data-testid='stButton'] button[key='fav_star_{c['id']}'] {{"
-                f"  position:absolute!important;top:10px!important;right:14px!important;"
-                f"  width:44px!important;height:44px!important;"
-                f"  background:transparent!important;border:none!important;"
-                f"  box-shadow:none!important;padding:0!important;"
-                f"  opacity:0!important;cursor:pointer!important;"
-                f"}}"
-                f"</style>",
-                unsafe_allow_html=True)
-            if st.button("★", key=f"fav_star_{c['id']}"):
-                if ja_fav:
-                    st.session_state.favoritos = [
-                        f for f in st.session_state.favoritos if f['id'] != c['id']
-                    ]
-                else:
-                    st.session_state.favoritos.append(c)
-                st.rerun()
-
-            # Navegação — 3 botões limpos
-            b_vol, bp, bac = st.columns(3)
+            # ── 4 botões na mesma linha ──────────────────────
+            b_vol, bp, br2, bac = st.columns(4)
             with b_vol:
                 if st.button("← VOLTAR", key=f"vol_{c['id']}", use_container_width=True):
                     cur = st.session_state.pular_idx.get(setor, 0)
@@ -1819,8 +1855,14 @@ for i, setor in enumerate(SETORES):
                     cur = st.session_state.pular_idx.get(setor, 0)
                     st.session_state.pular_idx[setor] = (cur + 1) % len(fila)
                     st.rerun()
+            with br2:
+                if st.button("REJEITAR", key=f"rej2_{c['id']}", type="secondary",
+                             use_container_width=True):
+                    st.session_state['rejeitar_foco'] = c['id']
+                    st.rerun()
             with bac:
-                if st.button("ACEITAR", key=f"acc_{c['id']}", type="primary", use_container_width=True):
+                if st.button("ACEITAR", key=f"acc_{c['id']}", type="primary",
+                             use_container_width=True):
                     st.session_state.candidato_foco = c['id']
                     st.rerun()
 
