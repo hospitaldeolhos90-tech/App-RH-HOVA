@@ -740,6 +740,7 @@ def salvar_json():
             "agendados":       st.session_state.agendados,
             "contratados":     st.session_state.contratados,
             "ex_funcionarios": st.session_state.ex_funcionarios,
+            "favoritos":       st.session_state.favoritos,
         }
         with open(ARQUIVO_MEMORIA, "w", encoding="utf-8") as f:
             json.dump(dados, f, default=_serial, indent=2, ensure_ascii=False)
@@ -748,7 +749,8 @@ def salvar_json():
 
 def _fix_datas(lista):
     for c in lista:
-        for k in ['data_entrevista','data_inicio_contrato']:
+        for k in ['data_entrevista','data_inicio_contrato','data_inicio_experiencia',
+                  'data_desligamento']:
             if k in c and isinstance(c[k], str):
                 try: c[k] = datetime.date.fromisoformat(c[k])
                 except: c[k] = None
@@ -756,10 +758,17 @@ def _fix_datas(lista):
             if k in c and isinstance(c[k], str):
                 try: c[k] = datetime.time.fromisoformat(c[k])
                 except: c[k] = None
+        # Restaurar bytes de foto e arquivo
         for k in ['arquivo_bytes','foto']:
             if k in c and c[k]:
                 try: c[k] = base64.b64decode(c[k])
                 except: c[k] = None
+        # Restaurar bytes dos documentos do dossiê (contratados)
+        if 'documentos' in c and isinstance(c['documentos'], dict):
+            for nome_doc, val in c['documentos'].items():
+                if val and isinstance(val, str):
+                    try: c['documentos'][nome_doc] = base64.b64decode(val)
+                    except: c['documentos'][nome_doc] = None
     return lista
 
 def carregar_json():
@@ -772,6 +781,7 @@ def carregar_json():
             st.session_state.agendados          = _fix_datas(d.get("agendados",       []))
             st.session_state.contratados        = _fix_datas(d.get("contratados",     []))
             st.session_state.ex_funcionarios    = _fix_datas(d.get("ex_funcionarios", []))
+            st.session_state.favoritos          = _fix_datas(d.get("favoritos",       []))
             # Constrói set de e-mails já em outras etapas (para dedup)
             proc = set()
             for lst in [st.session_state.aguardando_retorno,
@@ -1841,6 +1851,7 @@ for i, setor in enumerate(SETORES):
                         ]
                     else:
                         st.session_state.favoritos.append(c)
+                    salvar_json()
                     st.rerun()
 
             # ── 4 botões na mesma linha ──────────────────────
@@ -2874,7 +2885,9 @@ with abas[8]:
 
 # ── ABA 9: FAVORITOS ──────────────────────
 with abas[9]:
-    favs = _busca(st.session_state.favoritos, termo)
+    import streamlit.components.v1 as components
+
+    favs  = _busca(st.session_state.favoritos, termo)
     n_fav = len(favs)
 
     st.markdown(
@@ -2885,31 +2898,108 @@ with abas[9]:
 
     if not favs:
         st.markdown(
-            '<div class="empty">'
-            '<div class="e-title">NENHUM FAVORITO</div>'
-            '<div class="e-sub">Durante a triagem, clique em FAVORITAR para guardar '
-            'candidatos que te interessam.</div></div>',
+            '<div class="empty"><div class="e-title">NENHUM FAVORITO</div>'
+            '<div class="e-sub">Durante a triagem, use a estrela para guardar '
+            'candidatos de interesse.</div></div>',
             unsafe_allow_html=True)
+
+    # ── Se um candidato dos favoritos foi aceito, mostra o formulário ──
+    elif st.session_state.get('candidato_foco') and \
+         any(c['id'] == st.session_state.candidato_foco for c in favs):
+
+        c = next(x for x in favs if x['id'] == st.session_state.candidato_foco)
+
+        st.markdown("<div class='form-sched'>", unsafe_allow_html=True)
+        st.markdown(
+            "<div style='font-size:16px;font-weight:800;color:#004D40;"
+            "margin-bottom:20px;'>AGENDAR ENTREVISTA</div>",
+            unsafe_allow_html=True)
+
+        fa1, fa2 = st.columns(2)
+        with fa1:
+            st.caption("NOME DO CANDIDATO")
+            ne_fav = st.text_input("", value=c['nome'],
+                                   key=f"fav_ne_{c['id']}", label_visibility="collapsed")
+        with fa2:
+            st.caption("E-MAIL")
+            ee_fav = st.text_input("", value=c['email'],
+                                   key=f"fav_ee_{c['id']}", label_visibility="collapsed")
+
+        st.caption("DATA E HORÁRIOS (3 OPÇÕES)")
+        fd, fh1, fh2, fh3 = st.columns(4)
+        da_fav = fd.date_input("",  key=f"fav_da_{c['id']}", label_visibility="collapsed")
+        h1_fav = fh1.time_input("", datetime.time(9, 0),  key=f"fav_h1_{c['id']}", label_visibility="collapsed")
+        h2_fav = fh2.time_input("", datetime.time(14, 0), key=f"fav_h2_{c['id']}", label_visibility="collapsed")
+        h3_fav = fh3.time_input("", datetime.time(16, 0), key=f"fav_h3_{c['id']}", label_visibility="collapsed")
+
+        msg_fav = (
+            f"Olá {ne_fav},\n\n"
+            f"O Hospital de Olhos Vale do Aço analisou seu perfil e você foi "
+            f"selecionada(o) para a próxima fase do Processo Seletivo.\n\n"
+            f"Temos disponibilidade para o dia {da_fav.strftime('%d/%m/%Y')}. "
+            f"Responda com o NUMERO da sua escolha de horário:\n\n"
+            f"1 - {h1_fav.strftime('%H:%M')}\n"
+            f"2 - {h2_fav.strftime('%H:%M')}\n"
+            f"3 - {h3_fav.strftime('%H:%M')}\n\n"
+            f"Endereço: {ENDERECO_HOVA}\n"
+            f"Ao chegar, pergunte por Josi ou Paula.\n\n"
+            f"Atenciosamente,\nEquipe de RH — HOVA"
+        )
+        with st.expander("Visualizar e-mail que será enviado"):
+            st.code(msg_fav, language=None)
+
+        fbc, fbenv = st.columns(2)
+        with fbc:
+            if st.button("CANCELAR", key=f"fav_canc_{c['id']}",
+                         type="secondary", use_container_width=True):
+                st.session_state.candidato_foco = None
+                st.rerun()
+        with fbenv:
+            if st.button("ENVIAR CONVITE", type="primary",
+                         key=f"fav_conf_{c['id']}", use_container_width=True):
+                with st.spinner("Enviando convite..."):
+                    ok = send_email(ee_fav, "HOVA — Convite para Entrevista", msg_fav)
+                if ok:
+                    c.update({'nome': ne_fav, 'email': ee_fav,
+                              'data_entrevista': da_fav,
+                              'opcao_1': h1_fav, 'opcao_2': h2_fav, 'opcao_3': h3_fav})
+                    st.session_state.aguardando_retorno.append(c)
+                    # Remover dos favoritos ao aceitar
+                    st.session_state.favoritos = [
+                        f for f in st.session_state.favoritos if f['id'] != c['id']
+                    ]
+                    st.session_state.candidato_foco = None
+                    salvar_json()
+                    st.rerun()
+                else:
+                    st.error("Falha no envio. Verifique as configurações de e-mail.")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ── Grid de cards dos favoritos ────────────────────────────
     else:
         N = 4
         for row_start in range(0, n_fav, N):
             row  = favs[row_start:row_start+N]
             cols = st.columns(N)
+
             for j, c in enumerate(row):
                 with cols[j]:
-                    cargo_exib = (c.get('setor','—')).upper()
+                    cargo_exib = c.get('setor','—').upper()
                     tel_fmt    = c.get('telefone','')
                     if len(tel_fmt) == 11:
                         tel_fmt = f"{tel_fmt[:2]} {tel_fmt[2]} {tel_fmt[3:7]}-{tel_fmt[7:]}"
+                    elif len(tel_fmt) == 10:
+                        tel_fmt = f"{tel_fmt[:2]} {tel_fmt[2:6]}-{tel_fmt[6:]}"
 
+                    # Avatar
                     if c.get('foto'):
                         b64f = base64.b64encode(c['foto']).decode()
                         av   = (f"<div style='width:88px;height:88px;border-radius:50%;"
                                 f"background-image:url(\"data:image/jpeg;base64,{b64f}\");"
                                 f"background-size:cover;background-position:center;"
-                                f"border:3px solid #004D40;"
+                                f"border:3px solid #F59E0B;"
                                 f"margin:0 auto 14px auto;"
-                                f"box-shadow:0 4px 14px rgba(0,77,64,0.2);'></div>")
+                                f"box-shadow:0 4px 14px rgba(245,158,11,0.25);'></div>")
                     else:
                         av = (f"<div style='width:88px;height:88px;border-radius:50%;"
                               f"background:linear-gradient(145deg,#004D40,#26A69A);"
@@ -2920,7 +3010,9 @@ with abas[9]:
                               f"{iniciais(c['nome'])}</div>")
 
                     st.markdown(
-                        f"<div class='hova-card'>"
+                        f"<div class='hova-card' style='position:relative;'>"
+                        f"<div style='position:absolute;top:12px;right:16px;"
+                        f"font-size:20px;color:#F59E0B;'>★</div>"
                         f"{av}"
                         f"<div class='hova-card-nome'>{c['nome']}</div>"
                         f"<div class='hova-card-cargo-bar'>{cargo_exib}</div>"
@@ -2929,21 +3021,75 @@ with abas[9]:
                         f"</div>",
                         unsafe_allow_html=True)
 
-                    fc1, fc2 = st.columns(2)
-                    with fc1:
-                        # Remover dos favoritos
+                    # Resumo
+                    if c.get('preview'):
+                        with st.expander("Ver resumo"):
+                            st.markdown(
+                                f"<div class='cv-resumo' style='font-size:12px;'>"
+                                f"{c['preview']}</div>",
+                                unsafe_allow_html=True)
+
+                    # PDF
+                    if c.get('arquivo_bytes') and c.get('nome_arquivo'):
+                        with st.expander("Ver documento"):
+                            if c['nome_arquivo'].lower().endswith('.pdf'):
+                                b64p = base64.b64encode(c['arquivo_bytes']).decode()
+                                components.html(f"""<!DOCTYPE html><html>
+<head><meta charset="utf-8"><style>*{{margin:0;padding:0;box-sizing:border-box;}}
+#cw{{width:100%;height:480px;background:#525659;overflow-y:auto;
+display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:8px;}}
+canvas{{box-shadow:0 2px 6px rgba(0,0,0,0.4);}}</style></head><body>
+<div id="cw"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+const arr=new Uint8Array(atob('{b64p}').split('').map(x=>x.charCodeAt(0)));
+pdfjsLib.getDocument({{data:arr}}).promise.then(pdf=>{{
+  for(let i=1;i<=pdf.numPages;i++){{pdf.getPage(i).then(pg=>{{
+    const vp=pg.getViewport({{scale:1.2}});
+    const cv=document.createElement('canvas');
+    cv.width=vp.width;cv.height=vp.height;
+    document.getElementById('cw').appendChild(cv);
+    pg.render({{canvasContext:cv.getContext('2d'),viewport:vp}});
+  }});}}
+}});
+</script></body></html>""", height=500, scrolling=False)
+                            st.download_button(
+                                f"Baixar — {c['nome_arquivo']}",
+                                c['arquivo_bytes'],
+                                file_name=c['nome_arquivo'],
+                                mime="application/pdf",
+                                use_container_width=True,
+                                key=f"dl_fav_{c['id']}")
+
+                    # Ações
+                    fa, fb, fc2 = st.columns(3)
+                    with fa:
                         if st.button("Remover", key=f"desfav_{c['id']}",
                                      use_container_width=True):
                             st.session_state.favoritos = [
                                 f for f in st.session_state.favoritos
                                 if f['id'] != c['id']
                             ]
+                            salvar_json()
                             st.rerun()
-                    with fc2:
-                        # Aceitar direto dos favoritos
-                        if st.button("ACEITAR", key=f"fav_acc_{c['id']}",
+                    with fb:
+                        if st.button("AGENDAR", key=f"fav_age_{c['id']}",
                                      type="primary", use_container_width=True):
                             st.session_state.candidato_foco = c['id']
+                            st.rerun()
+                    with fc2:
+                        # Mover de volta para triagem se precisar
+                        if st.button("Triagem", key=f"fav_tri_{c['id']}",
+                                     use_container_width=True):
+                            if not any(x['id'] == c['id']
+                                       for x in st.session_state.cvs):
+                                st.session_state.cvs.append(c)
+                            st.session_state.favoritos = [
+                                f for f in st.session_state.favoritos
+                                if f['id'] != c['id']
+                            ]
+                            salvar_json()
                             st.rerun()
 
             for j in range(len(row), N):
