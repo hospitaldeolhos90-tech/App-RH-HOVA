@@ -1936,171 +1936,412 @@ with abas[7]:
                     st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
-# ── ABA 8: GESTÃO DE FUNCIONÁRIOS ─────────
+# ── ABA 8: CENTRO DE GESTÃO DE PESSOAS ────
 with abas[8]:
 
-    # ── Sub-navegação: Ativos / Histórico / Adicionar ──────────
-    sub = st.radio("", ["Funcionários Ativos", "Histórico de Desligamentos"],
+    # ── Função interna: e-mail para NTW com anexos ──────────────
+    def enviar_ntw(func: dict) -> tuple[bool, str]:
+        """Envia e-mail de admissão para a NTW Doctor com todos os PDFs do dossiê."""
+        try:
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.base      import MIMEBase
+            from email                import encoders
+
+            nome      = func.get('nome','').title()
+            cargo     = func.get('cargo_atual','—')
+            carga_h   = func.get('carga_horaria','—')
+            vt        = "Sim" if func.get('vale_transporte') else "Não"
+            linhas    = func.get('linhas_onibus','—')
+            data_ini  = func['data_inicio_contrato'].strftime('%d/%m/%Y') \
+                        if func.get('data_inicio_contrato') else '—'
+            data_exp  = func['data_inicio_experiencia'].strftime('%d/%m/%Y') \
+                        if func.get('data_inicio_experiencia') else data_ini
+
+            corpo = (
+                f"Bom dia,\n\n"
+                f"Seguem documentos para admissão a partir de {data_ini}.\n\n"
+                f"Colaborador: {nome}\n"
+                f"Cargo: {cargo}\n"
+                f"Carga Horária: {carga_h}\n"
+                f"Início da Experiência: {data_exp}\n"
+                f"Vale Transporte: {vt}"
+                + (f"\nLinhas: {linhas}" if vt == "Sim" else "")
+                + f"\n\nAtenciosamente,\nEquipe de RH — Hospital de Olhos Vale do Aço"
+            )
+
+            msg = MIMEMultipart()
+            msg['Subject'] = f"Admissão - {nome} - HOVA"
+            msg['From']    = EMAIL_CONTA
+            msg['To']      = "pessoal.expert@ntwdoctor.com.br"
+            msg['Bcc']     = EMAIL_CONTA
+            msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
+
+            # Anexar todos os PDFs do dossiê
+            docs = func.get('documentos', {})
+            for nome_doc, bytes_doc in docs.items():
+                if bytes_doc:
+                    part = MIMEBase('application','octet-stream')
+                    part.set_payload(bytes_doc)
+                    encoders.encode_base64(part)
+                    part.add_header('Content-Disposition',
+                                    f'attachment; filename="{nome_doc}.pdf"')
+                    msg.attach(part)
+
+            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as s:
+                s.login(EMAIL_CONTA, SENHA_CONTA)
+                s.send_message(msg)
+            return True, f"E-mail enviado para pessoal.expert@ntwdoctor.com.br"
+        except Exception as e:
+            return False, f"Erro ao enviar: {e}"
+
+    # ── CSS ciano para este módulo ───────────────────────────────
+    st.markdown("""
+    <style>
+    .ciano { color: #0891B2 !important; }
+    .btn-ciano div[data-testid="stButton"] button[kind="primary"] {
+        background: linear-gradient(135deg,#0891B2,#06B6D4) !important;
+        box-shadow: 0 2px 10px rgba(8,145,178,0.3) !important;
+    }
+    .btn-ciano div[data-testid="stButton"] button[kind="primary"]:hover {
+        background: #0E7490 !important;
+    }
+    .dossie-header {
+        background: linear-gradient(160deg,#F0FDFF,#E0F7FA);
+        border: 1px solid #B2EBF2;
+        border-radius: 20px;
+        padding: 36px 40px 28px;
+        text-align: center;
+        margin-bottom: 24px;
+        position: relative;
+    }
+    .dossie-header::before {
+        content:''; position:absolute; left:0; top:0; bottom:0;
+        width:5px; background:linear-gradient(180deg,#0891B2,#26A69A);
+        border-radius:20px 0 0 20px;
+    }
+    .func-avatar-xl {
+        width:110px; height:110px; border-radius:50%;
+        background:linear-gradient(145deg,#0891B2,#06B6D4);
+        color:#FFF; display:flex; justify-content:center; align-items:center;
+        font-size:34px; font-weight:900;
+        margin:0 auto 16px auto;
+        box-shadow:0 6px 24px rgba(8,145,178,0.3);
+        letter-spacing:1px;
+    }
+    .func-avatar-xl-img {
+        width:110px; height:110px; border-radius:50%; object-fit:cover;
+        border:4px solid #0891B2; margin:0 auto 16px auto; display:block;
+        box-shadow:0 6px 24px rgba(8,145,178,0.2);
+    }
+    .checklist-item {
+        display:flex; align-items:center; gap:10px;
+        padding:8px 14px; border-radius:8px; margin-bottom:6px;
+        font-size:13px;
+    }
+    .check-ok  { background:#F0FDF4; color:#166534; border:1px solid #BBF7D0; }
+    .check-no  { background:#FFF7ED; color:#92540A; border:1px solid #FED7AA; }
+    .ntw-box {
+        background:#F0FDFF; border:1.5px solid #0891B2;
+        border-radius:14px; padding:22px 26px; margin-top:16px;
+    }
+    .func-card-v2 {
+        background:#FFFFFF; border:1px solid #E2E6EA; border-radius:18px;
+        padding:28px 16px 20px; text-align:center;
+        box-shadow:0 2px 12px rgba(0,0,0,0.05);
+        transition:transform 0.18s,box-shadow 0.18s;
+        animation:fadeUp 0.3s ease;
+    }
+    .func-card-v2:hover { transform:translateY(-4px); box-shadow:0 8px 24px rgba(8,145,178,0.12); }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # ── Sub-navegação ────────────────────────────────────────────
+    sub = st.radio("", ["Equipe Ativa", "Ex-Colaboradores"],
                    horizontal=True, label_visibility="collapsed", key="sub_func")
 
-    # ══════════════════════════════════════════════════════════
-    # PAINEL LATERAL: Adicionar colaborador antigo
-    # ══════════════════════════════════════════════════════════
-    with st.expander("Adicionar Colaborador Existente"):
+    # ── Expander: cadastrar colaborador já ativo ─────────────────
+    with st.expander("Cadastrar Colaborador Existente"):
         with st.form("form_colab_antigo", clear_on_submit=True):
-            st.markdown("<div style='font-size:13px;font-weight:700;color:#004D40;"
-                        "margin-bottom:16px;'>CADASTRAR COLABORADOR JÁ ATIVO</div>",
-                        unsafe_allow_html=True)
+            st.markdown(
+                "<div style='font-size:12px;font-weight:800;color:#0891B2;"
+                "letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;'>"
+                "Novo Colaborador</div>", unsafe_allow_html=True)
+
             ca1, ca2 = st.columns(2)
-            ca_nome  = ca1.text_input("Nome completo *", placeholder="Ex: Maria da Silva")
-            ca_cargo = ca2.text_input("Cargo *",         placeholder="Ex: Recepcionista")
+            ca_nome  = ca1.text_input("Nome completo *")
+            ca_cargo = ca2.text_input("Cargo *", placeholder="Ex: Recepcionista")
             ca3, ca4 = st.columns(2)
-            ca_setor = ca3.selectbox("Setor", ["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
-                                                "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
-                                                "FATURAMENTO","JOVEM APRENDIZ"])
-            ca_adm   = ca4.date_input("Data de admissão",
-                                       value=datetime.date.today(),
-                                       key="ca_adm")
+            ca_setor = ca3.selectbox("Setor",["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
+                                               "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
+                                               "FATURAMENTO","JOVEM APRENDIZ"])
+            ca_adm   = ca4.date_input("Data de admissão", value=datetime.date.today(),
+                                       key="ca_adm2")
             ca5, ca6 = st.columns(2)
             ca_tel   = ca5.text_input("Telefone / WhatsApp", placeholder="31999990000")
-            ca_email = ca6.text_input("E-mail",              placeholder="colaborador@email.com")
-            ca_obs   = st.text_area("Observações", placeholder="CNH, certificações, observações...",
-                                    height=80)
-            ok_ca = st.form_submit_button("CADASTRAR COLABORADOR", type="primary",
+            ca_email = ca6.text_input("E-mail")
+            ca7, ca8 = st.columns(2)
+            ca_unif  = ca7.text_input("Nº do Uniforme", placeholder="Ex: P / M / G")
+            ca_carga = ca8.text_input("Carga Horária", placeholder="Ex: 6h semanais")
+            ca_vt    = st.checkbox("Utiliza Vale Transporte")
+            ca_linhas= st.text_input("Linhas de Ônibus", placeholder="Ex: 201, 405",
+                                      disabled=not ca_vt)
+            ca_foto  = st.file_uploader("Foto do colaborador (opcional)",
+                                         type=["jpg","jpeg","png"],
+                                         key="ca_foto_upload")
+            ca_obs   = st.text_area("Observações", height=70,
+                                     placeholder="Certificações, CNH, anotações...")
+
+            st.markdown("<div class='btn-ciano'>", unsafe_allow_html=True)
+            ok_ca = st.form_submit_button("CADASTRAR", type="primary",
                                            use_container_width=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
         if ok_ca:
             if ca_nome and ca_cargo:
+                foto_bytes = ca_foto.read() if ca_foto else None
                 novo_func = {
-                    "id":                  str(int(time.time()*1000)),
-                    "nome":                ca_nome.upper().strip(),
-                    "setor":               ca_setor,
-                    "email":               ca_email.lower().strip(),
-                    "telefone":            ''.join(filter(str.isdigit, ca_tel)),
-                    "data_inicio_contrato": ca_adm,
-                    "hora_inicio_contrato": datetime.time(8,0),
-                    "cargo_atual":         ca_cargo.strip(),
-                    "observacoes":         ca_obs.strip(),
-                    "foto":                None,
-                    "manual":              True,
+                    "id":   str(int(time.time()*1000)),
+                    "nome": ca_nome.upper().strip(),
+                    "setor": ca_setor,
+                    "email": ca_email.lower().strip(),
+                    "telefone": ''.join(filter(str.isdigit, ca_tel)),
+                    "data_inicio_contrato":    ca_adm,
+                    "data_inicio_experiencia": ca_adm,
+                    "hora_inicio_contrato":    datetime.time(8,0),
+                    "cargo_atual":  ca_cargo.strip(),
+                    "carga_horaria": ca_carga.strip(),
+                    "num_uniforme":  ca_unif.strip(),
+                    "vale_transporte": ca_vt,
+                    "linhas_onibus": ca_linhas.strip(),
+                    "observacoes":   ca_obs.strip(),
+                    "foto":   foto_bytes,
+                    "manual": True,
                     "email_admissao_enviado": False,
+                    "documentos": {},   # {nome: bytes_pdf}
+                    "docs_check": {     # checklist
+                        "RG": False, "CPF": False, "PIS": False,
+                        "Comprovante de Residência": False,
+                        "Diploma": False, "Cartão de Vacina": False,
+                        "Certidão de Casamento": False,
+                        "Certidão de Nascimento dos Filhos": False,
+                        "Foto 3x4": False,
+                    },
                 }
                 st.session_state.contratados.append(novo_func)
                 salvar_json()
-                st.success(f"{ca_nome.upper()} cadastrado com sucesso.")
+                st.success(f"{ca_nome.upper()} cadastrado.")
                 st.rerun()
             else:
                 st.error("Nome e cargo são obrigatórios.")
 
     st.write("")
 
-    # ══════════════════════════════════════════════════════════
-    # ATIVOS
-    # ══════════════════════════════════════════════════════════
-    if sub == "Funcionários Ativos":
+    # ════════════════════════════════════════════════════════════
+    # EQUIPE ATIVA
+    # ════════════════════════════════════════════════════════════
+    if sub == "Equipe Ativa":
         ativos = _busca(st.session_state.contratados, termo)
-        ativos = sorted(ativos,
-                        key=lambda x: x.get('data_inicio_contrato') or datetime.date.min)
+        ativos = sorted(ativos, key=lambda x: x.get('data_inicio_contrato') or datetime.date.min)
 
         if not ativos:
-            st.markdown('<div class="empty"><div class="e-title">NENHUM FUNCIONÁRIO ATIVO</div>'
-                        '<div class="e-sub">Cadastre colaboradores usando o painel acima.</div></div>',
+            st.markdown('<div class="empty"><div class="e-title">NENHUM COLABORADOR ATIVO</div>'
+                        '<div class="e-sub">Use o painel acima para cadastrar a equipe.</div></div>',
                         unsafe_allow_html=True)
-        else:
-            st.markdown(
-                f"<div style='font-size:12px;color:#8A94A6;margin-bottom:18px;'>"
-                f"<b style='color:#004D40;font-size:22px;font-weight:900;'>{len(ativos)}</b>"
-                f" colaborador(es) ativo(s)</div>",
-                unsafe_allow_html=True
-            )
 
-            # ── DOSSIÊ ABERTO ──────────────────────────────────
-            if st.session_state.perfil_foco:
-                func = next((f for f in st.session_state.contratados
-                             if f['id'] == st.session_state.perfil_foco), None)
+        # ── DOSSIÊ ABERTO ────────────────────────────────────────
+        elif st.session_state.perfil_foco:
+            func = next((f for f in st.session_state.contratados
+                         if f['id'] == st.session_state.perfil_foco), None)
 
-                if func:
-                    ini_f = func['data_inicio_contrato'].strftime('%d/%m/%Y') \
-                            if func.get('data_inicio_contrato') else '—'
+            if not func:
+                st.session_state.perfil_foco = None
+                st.rerun()
+            else:
+                # Garantir campos novos em registros antigos
+                func.setdefault('documentos', {})
+                func.setdefault('docs_check', {
+                    "RG":False,"CPF":False,"PIS":False,
+                    "Comprovante de Residência":False,"Diploma":False,
+                    "Cartão de Vacina":False,"Certidão de Casamento":False,
+                    "Certidão de Nascimento dos Filhos":False,"Foto 3x4":False,
+                })
+                func.setdefault('carga_horaria','')
+                func.setdefault('num_uniforme','')
+                func.setdefault('vale_transporte',False)
+                func.setdefault('linhas_onibus','')
+                func.setdefault('data_inicio_experiencia',
+                                func.get('data_inicio_contrato'))
+                func.setdefault('ntw_enviado', False)
 
-                    # Avatar
-                    if func.get('foto'):
-                        b64f = base64.b64encode(func['foto']).decode()
-                        av_html = (f"<img src='data:image/jpeg;base64,{b64f}'"
-                                   f" class='func-avatar-img'"
-                                   f" style='width:90px;height:90px;display:block;"
-                                   f"margin:0 auto 12px;'>")
-                    else:
-                        av_html = (f"<div class='func-avatar' style='width:90px;height:90px;"
-                                   f"font-size:28px;'>{iniciais(func['nome'])}</div>")
+                ini_f = func['data_inicio_contrato'].strftime('%d/%m/%Y') \
+                        if func.get('data_inicio_contrato') else '—'
 
+                # ── Header do perfil ─────────────────────────────
+                if func.get('foto'):
+                    b64f    = base64.b64encode(func['foto']).decode()
+                    av_html = (f"<img src='data:image/jpeg;base64,{b64f}'"
+                               f" class='func-avatar-xl-img'>")
+                else:
+                    av_html = (f"<div class='func-avatar-xl'>"
+                               f"{iniciais(func['nome'])}</div>")
+
+                ntw_badge = (
+                    "<span style='background:#DCFCE7;color:#166534;font-size:10px;"
+                    "font-weight:700;padding:3px 10px;border-radius:20px;"
+                    "letter-spacing:1px;'>NTW ENVIADO</span>"
+                    if func.get('ntw_enviado') else ""
+                )
+
+                st.markdown(
+                    f"<div class='dossie-header'>"
+                    f"{av_html}"
+                    f"<div style='font-size:24px;font-weight:900;color:#0D1B2A;"
+                    f"margin-bottom:4px;'>{func['nome']}</div>"
+                    f"<div style='font-size:12px;color:#0891B2;font-weight:700;"
+                    f"letter-spacing:1.5px;text-transform:uppercase;'>"
+                    f"{func.get('cargo_atual','—')}</div>"
+                    f"<div style='font-size:11px;color:#9AA5B4;margin-top:6px;'>"
+                    f"Admitido em {ini_f} &nbsp;·&nbsp; {func.get('setor','—')}"
+                    f"&nbsp;&nbsp;{ntw_badge}</div>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
+
+                # ── 3 colunas de ação rápida ─────────────────────
+                qa1, qa2, qa3 = st.columns(3)
+                with qa1:
+                    tel_wa = ''.join(filter(str.isdigit,
+                                            func.get('telefone','')))
+                    if tel_wa:
+                        msg_wa = (f"Olá {func['nome'].title()}, aqui é o RH do HOVA. "
+                                  f"Verificamos que há documentos pendentes no seu dossiê. "
+                                  f"Pode confirmar o envio?")
+                        url_wa = (f"https://wa.me/55{tel_wa}?"
+                                  f"text={urllib.parse.quote(msg_wa)}")
+                        st.markdown(
+                            f'<a href="{url_wa}" target="_blank" class="wa-btn"'
+                            f' style="display:block;text-align:center;">'
+                            f'WhatsApp Colaborador</a>',
+                            unsafe_allow_html=True)
+                with qa2:
+                    # WhatsApp Paula
+                    msg_paula = (
+                        f"Paula, os documentos de admissão de "
+                        f"{func['nome'].title()} estão disponíveis no sistema. "
+                        f"Cargo: {func.get('cargo_atual','—')}.")
+                    url_paula = (f"https://wa.me/5531886000023?"
+                                 f"text={urllib.parse.quote(msg_paula)}")
                     st.markdown(
-                        f"<div class='dossie-card'>"
-                        f"<div style='text-align:center;margin-bottom:20px;'>"
-                        f"{av_html}"
-                        f"<div style='font-size:20px;font-weight:900;color:#0D1B2A;'>{func['nome']}</div>"
-                        f"<div style='font-size:12px;color:#004D40;font-weight:700;"
-                        f"letter-spacing:1px;text-transform:uppercase;margin-top:4px;'>"
-                        f"{func.get('cargo_atual','—')}</div>"
-                        f"<div style='font-size:11px;color:#9AA5B4;margin-top:4px;'>"
-                        f"Desde {ini_f}</div>"
-                        f"</div>",
-                        unsafe_allow_html=True
-                    )
+                        f'<a href="{url_paula}" target="_blank"'
+                        f' style="display:block;text-align:center;'
+                        f'background:#00A884;color:#FFF;padding:13px 18px;'
+                        f'border-radius:9px;font-size:11px;font-weight:700;'
+                        f'letter-spacing:1px;text-transform:uppercase;'
+                        f'text-decoration:none;">'
+                        f'WhatsApp Paula</a>',
+                        unsafe_allow_html=True)
+                with qa3:
+                    if st.button("VOLTAR A EQUIPE", key="voltar_grid",
+                                 use_container_width=True):
+                        st.session_state.perfil_foco = None
+                        st.rerun()
 
-                    # Formulário de edição
-                    with st.form(f"form_dossie_{func['id']}"):
-                        st.markdown("<div style='font-size:11px;font-weight:700;color:#004D40;"
-                                    "letter-spacing:2px;text-transform:uppercase;"
-                                    "margin-bottom:14px;'>Editar Dados</div>",
+                st.write("")
+
+                # ── TABS internas do dossiê ──────────────────────
+                tab_dados, tab_docs, tab_ntw = st.tabs([
+                    "Dados & RH", "Documentos", "Enviar para Contabilidade"
+                ])
+
+                # ── TAB 1: DADOS ─────────────────────────────────
+                with tab_dados:
+                    with st.form(f"form_dados_{func['id']}"):
+                        st.markdown(
+                            "<div style='font-size:10px;font-weight:800;"
+                            "color:#0891B2;letter-spacing:2px;"
+                            "text-transform:uppercase;margin-bottom:16px;'>"
+                            "Informações Pessoais e Contratuais</div>",
+                            unsafe_allow_html=True)
+
+                        r1c1, r1c2 = st.columns(2)
+                        novo_nome   = r1c1.text_input("Nome",  value=func.get('nome',''))
+                        novo_cargo  = r1c2.text_input("Cargo", value=func.get('cargo_atual',''))
+
+                        r2c1, r2c2 = st.columns(2)
+                        novo_tel    = r2c1.text_input("Telefone/WhatsApp",
+                                                      value=func.get('telefone',''))
+                        novo_email  = r2c2.text_input("E-mail", value=func.get('email',''))
+
+                        r3c1, r3c2 = st.columns(2)
+                        SETORES_LIST = ["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
+                                        "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
+                                        "FATURAMENTO","JOVEM APRENDIZ"]
+                        novo_setor  = r3c1.selectbox(
+                            "Setor", SETORES_LIST,
+                            index=SETORES_LIST.index(func['setor'])
+                                  if func.get('setor') in SETORES_LIST else 0)
+                        novo_unif   = r3c2.text_input("Nº Uniforme",
+                                                      value=func.get('num_uniforme',''))
+
+                        r4c1, r4c2 = st.columns(2)
+                        novo_adm    = r4c1.date_input(
+                            "Data de Admissão",
+                            value=func.get('data_inicio_contrato') or datetime.date.today())
+                        novo_exp    = r4c2.date_input(
+                            "Início da Experiência",
+                            value=func.get('data_inicio_experiencia')
+                                  or func.get('data_inicio_contrato')
+                                  or datetime.date.today())
+
+                        r5c1, r5c2 = st.columns(2)
+                        novo_carga  = r5c1.text_input("Carga Horária",
+                                                      value=func.get('carga_horaria',''),
+                                                      placeholder="Ex: 6h semanais")
+                        novo_vt     = r5c2.checkbox("Vale Transporte",
+                                                     value=func.get('vale_transporte',False))
+                        novo_linhas = st.text_input("Linhas de Ônibus",
+                                                    value=func.get('linhas_onibus',''),
+                                                    placeholder="Ex: 201, 405",
+                                                    disabled=not novo_vt)
+
+                        # Upload de foto
+                        nova_foto_up = st.file_uploader(
+                            "Atualizar foto do perfil",
+                            type=["jpg","jpeg","png"],
+                            key=f"foto_edit_{func['id']}")
+
+                        novo_obs = st.text_area(
+                            "Observações de Desempenho",
+                            value=func.get('observacoes',''), height=90,
+                            placeholder="Feedbacks, advertências, elogios...")
+
+                        st.markdown("<div style='height:8px;'></div>",
                                     unsafe_allow_html=True)
-                        d1, d2 = st.columns(2)
-                        novo_nome  = d1.text_input("Nome",    value=func.get('nome',''))
-                        novo_cargo = d2.text_input("Cargo",   value=func.get('cargo_atual',''))
-                        d3, d4 = st.columns(2)
-                        novo_tel   = d3.text_input("Telefone/WhatsApp",
-                                                   value=func.get('telefone',''))
-                        novo_email = d4.text_input("E-mail",  value=func.get('email',''))
-                        d5, d6 = st.columns(2)
-                        novo_setor = d5.selectbox("Setor",
-                                                  ["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
-                                                   "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
-                                                   "FATURAMENTO","JOVEM APRENDIZ"],
-                                                  index=["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
-                                                          "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
-                                                          "FATURAMENTO","JOVEM APRENDIZ"]
-                                                  .index(func.get('setor','TRIAGEM GERAL'))
-                                                  if func.get('setor') in
-                                                  ["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
-                                                   "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
-                                                   "FATURAMENTO","JOVEM APRENDIZ"] else 0)
-                        novo_adm = d6.date_input("Data de admissão",
-                                                  value=func.get('data_inicio_contrato')
-                                                        or datetime.date.today())
-                        novo_obs = st.text_area("Observações / Feedback",
-                                                value=func.get('observacoes',''),
-                                                height=100,
-                                                placeholder="Anotações, feedbacks, certificações...")
-
                         sb1, sb2, sb3 = st.columns(3)
-                        salvar_ok   = sb1.form_submit_button("SALVAR",
-                                                              type="primary",
-                                                              use_container_width=True)
-                        fechar_ok   = sb2.form_submit_button("FECHAR",
-                                                              use_container_width=True)
-                        desligar_ok = sb3.form_submit_button("REGISTRAR DESLIGAMENTO",
-                                                              use_container_width=True)
+                        salvar_ok   = sb1.form_submit_button(
+                            "SALVAR", type="primary", use_container_width=True)
+                        fechar_ok   = sb2.form_submit_button(
+                            "FECHAR", use_container_width=True)
+                        desligar_ok = sb3.form_submit_button(
+                            "DESLIGAR", use_container_width=True)
 
                     if salvar_ok:
-                        func['nome']                = novo_nome.upper().strip()
-                        func['cargo_atual']         = novo_cargo.strip()
-                        func['telefone']            = ''.join(filter(str.isdigit, novo_tel))
-                        func['email']               = novo_email.lower().strip()
-                        func['setor']               = novo_setor
-                        func['data_inicio_contrato'] = novo_adm
-                        func['observacoes']         = novo_obs.strip()
+                        func['nome']               = novo_nome.upper().strip()
+                        func['cargo_atual']        = novo_cargo.strip()
+                        func['telefone']           = ''.join(filter(str.isdigit, novo_tel))
+                        func['email']              = novo_email.lower().strip()
+                        func['setor']              = novo_setor
+                        func['num_uniforme']       = novo_unif.strip()
+                        func['data_inicio_contrato']    = novo_adm
+                        func['data_inicio_experiencia'] = novo_exp
+                        func['carga_horaria']      = novo_carga.strip()
+                        func['vale_transporte']    = novo_vt
+                        func['linhas_onibus']      = novo_linhas.strip()
+                        func['observacoes']        = novo_obs.strip()
+                        if nova_foto_up:
+                            func['foto'] = nova_foto_up.read()
                         salvar_json()
-                        st.success("Dados atualizados.")
+                        st.success("Dados salvos.")
                         st.rerun()
 
                     if fechar_ok:
@@ -2113,69 +2354,247 @@ with abas[8]:
                         st.session_state.contratados.remove(func)
                         st.session_state.perfil_foco = None
                         salvar_json()
-                        st.success(f"{func['nome']} movido para Histórico de Desligamentos.")
+                        st.success(f"{func['nome']} desligado e movido para Histórico.")
                         st.rerun()
 
-                    # WhatsApp direto
-                    tel_wa = ''.join(filter(str.isdigit, func.get('telefone','')))
-                    if tel_wa:
-                        msg_wa = f"Olá {func['nome'].title()}, aqui é o RH do Hospital de Olhos Vale do Aço."
-                        url_wa = f"https://wa.me/55{tel_wa}?text={urllib.parse.quote(msg_wa)}"
+                # ── TAB 2: DOCUMENTOS ────────────────────────────
+                with tab_docs:
+                    st.markdown(
+                        "<div style='font-size:10px;font-weight:800;color:#0891B2;"
+                        "letter-spacing:2px;text-transform:uppercase;"
+                        "margin-bottom:16px;'>Checklist de Documentos</div>",
+                        unsafe_allow_html=True)
+
+                    DOCS_LISTA = [
+                        "RG","CPF","PIS","Comprovante de Residência",
+                        "Diploma","Cartão de Vacina",
+                        "Certidão de Casamento",
+                        "Certidão de Nascimento dos Filhos","Foto 3x4",
+                    ]
+
+                    checks_atuais = func.get('docs_check', {})
+                    novos_checks  = {}
+                    col_a, col_b = st.columns(2)
+                    for idx, doc_nome in enumerate(DOCS_LISTA):
+                        col = col_a if idx % 2 == 0 else col_b
+                        with col:
+                            val = st.checkbox(
+                                doc_nome,
+                                value=checks_atuais.get(doc_nome, False),
+                                key=f"chk_{func['id']}_{doc_nome}")
+                            novos_checks[doc_nome] = val
+
+                    # Atualizar checklist em tempo real
+                    func['docs_check'] = novos_checks
+
+                    # Resumo
+                    total_docs = len(DOCS_LISTA)
+                    ok_docs    = sum(novos_checks.values())
+                    pct        = int(ok_docs / total_docs * 100)
+                    cor_pct    = "#166534" if pct == 100 else ("#0891B2" if pct >= 50 else "#92540A")
+                    st.markdown(
+                        f"<div style='margin:16px 0 20px;padding:12px 18px;"
+                        f"background:#F8FAFB;border-radius:10px;border:1px solid #E2E6EA;"
+                        f"font-size:13px;color:{cor_pct};font-weight:700;'>"
+                        f"{ok_docs} de {total_docs} documentos recebidos ({pct}%)"
+                        f"</div>", unsafe_allow_html=True)
+
+                    # Upload de PDFs
+                    st.markdown(
+                        "<div style='font-size:10px;font-weight:800;color:#0891B2;"
+                        "letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;'>"
+                        "Adicionar PDF ao Dossiê</div>", unsafe_allow_html=True)
+
+                    doc_up_nome = st.selectbox(
+                        "Documento:", DOCS_LISTA, key=f"doc_sel_{func['id']}")
+                    doc_up_file = st.file_uploader(
+                        "Selecionar PDF", type=["pdf"],
+                        key=f"doc_up_{func['id']}")
+
+                    if st.button("SALVAR DOCUMENTO",
+                                 key=f"salvar_doc_{func['id']}",
+                                 type="primary", use_container_width=True):
+                        if doc_up_file:
+                            func['documentos'][doc_up_nome] = doc_up_file.read()
+                            func['docs_check'][doc_up_nome] = True
+                            salvar_json()
+                            st.success(f"{doc_up_nome} salvo no dossiê.")
+                            st.rerun()
+                        else:
+                            st.warning("Selecione um arquivo PDF primeiro.")
+
+                    # Listar PDFs já enviados
+                    if func.get('documentos'):
                         st.markdown(
-                            f'<a href="{url_wa}" target="_blank" class="wa-btn"'
-                            f' style="display:block;margin-top:12px;">'
-                            f'Enviar Mensagem (WhatsApp)</a>',
-                            unsafe_allow_html=True
-                        )
+                            "<div style='font-size:10px;font-weight:800;color:#004D40;"
+                            "letter-spacing:2px;text-transform:uppercase;"
+                            "margin:16px 0 8px;'>PDFs no Dossiê</div>",
+                            unsafe_allow_html=True)
+                        for nome_doc, bytes_doc in func['documentos'].items():
+                            if bytes_doc:
+                                dc1, dc2 = st.columns([3,1])
+                                dc1.markdown(
+                                    f"<div style='font-size:13px;color:#0D1B2A;"
+                                    f"font-weight:600;padding:8px 0;'>"
+                                    f"{nome_doc}</div>",
+                                    unsafe_allow_html=True)
+                                dc2.download_button(
+                                    "Baixar", bytes_doc,
+                                    file_name=f"{nome_doc}_{func['nome']}.pdf",
+                                    mime="application/pdf",
+                                    key=f"dwn_{func['id']}_{nome_doc}",
+                                    use_container_width=True)
 
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    salvar_json()  # salvar checklist
 
-            # ── GRID DE CARDS ──────────────────────────────────
-            else:
-                # CSS grid via HTML puro (st.columns não faz grid responsivo)
-                cards_html = "<div class='func-grid'>"
-                for f in ativos:
+                # ── TAB 3: ENVIAR PARA NTW ───────────────────────
+                with tab_ntw:
+                    st.markdown(
+                        "<div class='ntw-box'>"
+                        "<div style='font-size:14px;font-weight:800;color:#0891B2;"
+                        "margin-bottom:4px;'>Encaminhar para Contabilidade</div>"
+                        "<div style='font-size:12px;color:#4A5568;'>"
+                        "Envia e-mail para <b>pessoal.expert@ntwdoctor.com.br</b> "
+                        "com os dados de admissão e todos os PDFs do dossiê anexados."
+                        "</div></div>",
+                        unsafe_allow_html=True)
+
+                    st.write("")
+                    with st.form(f"form_ntw_{func['id']}"):
+                        n1, n2 = st.columns(2)
+                        ntw_cargo  = n1.text_input(
+                            "Cargo (confirmar)",
+                            value=func.get('cargo_atual',''))
+                        ntw_carga  = n2.text_input(
+                            "Carga Horária",
+                            value=func.get('carga_horaria',''),
+                            placeholder="Ex: 44h semanais")
+                        n3, n4 = st.columns(2)
+                        ntw_adm = n3.date_input(
+                            "Data de início",
+                            value=func.get('data_inicio_contrato') or datetime.date.today())
+                        ntw_exp = n4.date_input(
+                            "Início da Experiência",
+                            value=func.get('data_inicio_experiencia')
+                                  or func.get('data_inicio_contrato')
+                                  or datetime.date.today())
+                        ntw_vt  = st.checkbox(
+                            "Vale Transporte",
+                            value=func.get('vale_transporte', False))
+                        ntw_linhas = st.text_input(
+                            "Linhas", value=func.get('linhas_onibus',''),
+                            disabled=not ntw_vt)
+
+                        # Mostrar PDFs que serão anexados
+                        docs_disponiveis = [k for k,v in func.get('documentos',{}).items() if v]
+                        if docs_disponiveis:
+                            st.markdown(
+                                f"<div style='font-size:12px;color:#0891B2;"
+                                f"font-weight:600;margin-top:8px;'>"
+                                f"PDFs que serão anexados: "
+                                f"{', '.join(docs_disponiveis)}</div>",
+                                unsafe_allow_html=True)
+                        else:
+                            st.markdown(
+                                "<div style='font-size:12px;color:#92540A;"
+                                "font-weight:600;margin-top:8px;'>"
+                                "Nenhum PDF no dossiê ainda. Adicione na aba Documentos.</div>",
+                                unsafe_allow_html=True)
+
+                        enviar_ntw_ok = st.form_submit_button(
+                            "ENVIAR PARA NTW DOCTOR",
+                            type="primary", use_container_width=True)
+
+                    if enviar_ntw_ok:
+                        # Atualizar dados antes de enviar
+                        func['cargo_atual']             = ntw_cargo.strip()
+                        func['carga_horaria']           = ntw_carga.strip()
+                        func['data_inicio_contrato']    = ntw_adm
+                        func['data_inicio_experiencia'] = ntw_exp
+                        func['vale_transporte']         = ntw_vt
+                        func['linhas_onibus']           = ntw_linhas.strip()
+
+                        with st.spinner("Enviando para NTW Doctor..."):
+                            ok_ntw, msg_ntw = enviar_ntw(func)
+
+                        if ok_ntw:
+                            func['ntw_enviado'] = True
+                            salvar_json()
+                            st.markdown(
+                                f"<div class='notif notif-ok'>{msg_ntw}</div>",
+                                unsafe_allow_html=True)
+                        else:
+                            st.markdown(
+                                f"<div class='notif notif-warn'>{msg_ntw}</div>",
+                                unsafe_allow_html=True)
+
+        # ── GRID DE CARDS ────────────────────────────────────────
+        else:
+            st.markdown(
+                f"<div style='font-size:12px;color:#8A94A6;margin-bottom:20px;'>"
+                f"<b style='color:#0891B2;font-size:24px;font-weight:900;'>{len(ativos)}</b>"
+                f" colaborador(es) ativo(s)</div>",
+                unsafe_allow_html=True)
+
+            n_cols = 4
+            rows   = [ativos[i:i+n_cols] for i in range(0, len(ativos), n_cols)]
+
+            for row in rows:
+                cards_html = "<div style='display:grid;grid-template-columns:" \
+                             f"repeat({len(row)},1fr);gap:16px;margin-bottom:0;'>"
+                for f in row:
                     ini_f = f['data_inicio_contrato'].strftime('%d/%m/%Y') \
                             if f.get('data_inicio_contrato') else '—'
                     if f.get('foto'):
                         b64f = base64.b64encode(f['foto']).decode()
-                        av = (f"<img src='data:image/jpeg;base64,{b64f}'"
-                              f" class='func-avatar-img'>")
+                        av   = (f"<img src='data:image/jpeg;base64,{b64f}'"
+                                f" style='width:84px;height:84px;border-radius:50%;"
+                                f"object-fit:cover;border:3px solid #0891B2;"
+                                f"display:block;margin:0 auto 14px;'>"  )
                     else:
-                        av = (f"<div class='func-avatar'>{iniciais(f['nome'])}</div>")
+                        av = (f"<div style='width:84px;height:84px;border-radius:50%;"
+                              f"background:linear-gradient(145deg,#0891B2,#06B6D4);"
+                              f"color:#FFF;display:flex;justify-content:center;"
+                              f"align-items:center;font-size:28px;font-weight:900;"
+                              f"margin:0 auto 14px;box-shadow:0 4px 14px "
+                              f"rgba(8,145,178,0.25);'>{iniciais(f['nome'])}</div>")
 
+                    ntw_dot = (
+                        "<div style='width:8px;height:8px;border-radius:50%;"
+                        "background:#22C55E;display:inline-block;margin-right:4px;'></div>"
+                        if f.get('ntw_enviado') else ""
+                    )
                     cargo_exib = f.get('cargo_atual') or f.get('setor','—')
-
                     cards_html += (
-                        f"<div class='func-card'>"
+                        f"<div class='func-card-v2'>"
                         f"{av}"
-                        f"<div class='func-nome'>{f['nome']}</div>"
-                        f"<div class='func-cargo'>{cargo_exib}</div>"
-                        f"<div class='func-data'>Desde {ini_f}</div>"
+                        f"<div style='font-size:13px;font-weight:800;color:#0D1B2A;"
+                        f"text-transform:uppercase;line-height:1.3;margin-bottom:4px;'>"
+                        f"{f['nome']}</div>"
+                        f"<div style='font-size:11px;color:#0891B2;font-weight:700;"
+                        f"letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px;'>"
+                        f"{cargo_exib}</div>"
+                        f"<div style='font-size:10px;color:#9AA5B4;margin-bottom:14px;'>"
+                        f"{ntw_dot}Desde {ini_f}</div>"
                         f"</div>"
                     )
                 cards_html += "</div>"
                 st.markdown(cards_html, unsafe_allow_html=True)
 
-                # Botões "Acessar Perfil" — um por funcionário (fora do HTML)
-                n_cols = 4
-                rows = [ativos[i:i+n_cols] for i in range(0, len(ativos), n_cols)]
-                for row in rows:
-                    cols = st.columns(n_cols)
-                    for j, f in enumerate(row):
-                        with cols[j]:
-                            if st.button("Acessar Perfil",
-                                         key=f"perfil_{f['id']}",
-                                         use_container_width=True):
-                                st.session_state.perfil_foco = f['id']
-                                st.rerun()
-                    # Preencher colunas vazias na última linha
-                    for j in range(len(row), n_cols):
-                        cols[j].empty()
+                # Botões abaixo de cada card (fora do HTML)
+                btn_cols = st.columns(len(row))
+                for j, f in enumerate(row):
+                    with btn_cols[j]:
+                        if st.button("Acessar Perfil",
+                                     key=f"perfil_{f['id']}",
+                                     use_container_width=True):
+                            st.session_state.perfil_foco = f['id']
+                            st.rerun()
+                st.write("")
 
-    # ══════════════════════════════════════════════════════════
-    # HISTÓRICO DE DESLIGAMENTOS
-    # ══════════════════════════════════════════════════════════
+    # ════════════════════════════════════════════════════════════
+    # EX-COLABORADORES
+    # ════════════════════════════════════════════════════════════
     else:
         ex_list = _busca(st.session_state.ex_funcionarios, termo)
         ex_list = sorted(ex_list,
@@ -2183,32 +2602,45 @@ with abas[8]:
                          reverse=True)
 
         if not ex_list:
-            st.markdown('<div class="empty"><div class="e-title">NENHUM DESLIGAMENTO</div>'
-                        '<div class="e-sub">O histórico de ex-funcionários aparecerá aqui.</div></div>',
+            st.markdown('<div class="empty"><div class="e-title">NENHUM REGISTRO</div>'
+                        '<div class="e-sub">O histórico de ex-colaboradores aparecerá aqui.</div></div>',
                         unsafe_allow_html=True)
         else:
             st.markdown(
                 f"<div style='font-size:12px;color:#8A94A6;margin-bottom:16px;'>"
                 f"<b style='color:#9AA5B4;font-size:18px;'>{len(ex_list)}</b>"
-                f" desligamento(s) registrado(s)</div>",
-                unsafe_allow_html=True
-            )
+                f" ex-colaborador(es)</div>", unsafe_allow_html=True)
+
             for f in ex_list:
-                adm_f  = f['data_inicio_contrato'].strftime('%d/%m/%Y') \
-                         if f.get('data_inicio_contrato') else '—'
-                dem_f  = f['data_desligamento'].strftime('%d/%m/%Y') \
-                         if f.get('data_desligamento') else '—'
-                st.markdown(
-                    f"<div class='ex-func-card'>"
-                    f"<div style='font-weight:700;font-size:14px;color:#4A5568;'>{f['nome']}</div>"
-                    f"<div style='font-size:12px;color:#9AA5B4;margin-top:3px;'>"
-                    f"{f.get('cargo_atual') or f.get('setor','—')}"
-                    f" &nbsp;·&nbsp; Admissão: {adm_f}"
-                    f" &nbsp;·&nbsp; Desligamento: {dem_f}"
-                    f"</div>"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
+                adm_f = f['data_inicio_contrato'].strftime('%d/%m/%Y') \
+                        if f.get('data_inicio_contrato') else '—'
+                dem_f = f['data_desligamento'].strftime('%d/%m/%Y') \
+                        if f.get('data_desligamento') else '—'
+                docs_count = len([v for v in f.get('documentos',{}).values() if v])
+
+                xc1, xc2 = st.columns([4,1])
+                with xc1:
+                    st.markdown(
+                        f"<div class='ex-func-card'>"
+                        f"<div style='font-weight:700;font-size:14px;color:#4A5568;'>"
+                        f"{f['nome']}</div>"
+                        f"<div style='font-size:12px;color:#9AA5B4;margin-top:3px;'>"
+                        f"{f.get('cargo_atual') or f.get('setor','—')}"
+                        f" &nbsp;·&nbsp; Admissão: {adm_f}"
+                        f" &nbsp;·&nbsp; Desligamento: {dem_f}"
+                        f" &nbsp;·&nbsp; {docs_count} doc(s) no dossiê"
+                        f"</div></div>",
+                        unsafe_allow_html=True)
+                with xc2:
+                    # Botão para reativar
+                    if st.button("Reativar", key=f"reativar_{f['id']}",
+                                 use_container_width=True):
+                        f.pop('data_desligamento', None)
+                        st.session_state.contratados.append(f)
+                        st.session_state.ex_funcionarios.remove(f)
+                        salvar_json()
+                        st.success(f"{f['nome']} reativado.")
+                        st.rerun()
 
 # ── ABA 9: BANCO ANTIGOS ──────────────────
 with abas[9]:
