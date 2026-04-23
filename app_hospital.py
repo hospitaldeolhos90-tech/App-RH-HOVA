@@ -796,6 +796,7 @@ _def = {
     'historico_emails': set(),
     'candidato_foco': None, 'contratar_foco': None,
     'perfil_foco': None,
+    'nao_contratar_foco': None,
     'pular_idx': {},
     'sync_msg': None, 'sync_logs': [],
     'executar_sync': False, 'limite_sync': 30,
@@ -1619,8 +1620,19 @@ for i, setor in enumerate(SETORES):
             dat_b    = f"<span class='tag tag-azul'>{c['data']}</span>"
             tags_b   = "".join(f"<span class='tag tag-verde'>{t}</span>" for t in c.get('tags',[]))
 
+            # Estrela de favorito — no canto superior direito do card
+            ja_fav   = any(f['id'] == c['id'] for f in st.session_state.favoritos)
+            estrela  = "★" if ja_fav else "☆"
+            cor_est  = "#F59E0B" if ja_fav else "#CBD5E0"
+            tip_est  = "Remover dos favoritos" if ja_fav else "Adicionar aos favoritos"
+
             st.markdown(
-                f"<div class='card-cand'>{av}"
+                f"<div class='card-cand' style='position:relative;'>"
+                f"<div title='{tip_est}' id='star_{c['id']}'"
+                f" style='position:absolute;top:16px;right:20px;"
+                f"font-size:26px;color:{cor_est};cursor:pointer;"
+                f"line-height:1;user-select:none;'>{estrela}</div>"
+                f"{av}"
                 f"<div class='cand-nome'>{c['nome']} {manual_b}</div>"
                 f"<div style='margin:8px 0;'>{cid_b} {dat_b}</div>"
                 f"<div class='cand-info'>{c['email']}"
@@ -1773,8 +1785,30 @@ for i, setor in enumerate(SETORES):
                     salvar_json()
                     st.rerun()
 
-            # Navegação ← → + Favoritar + Aceitar em 4 colunas
-            b_vol, bp, b_fav, bac = st.columns(4)
+            # Botão invisível da estrela — posicionado via CSS sobre o ★ do card
+            ja_fav = any(f['id'] == c['id'] for f in st.session_state.favoritos)
+            st.markdown(
+                f"<style>"
+                f"div[data-testid='stButton'] button[key='fav_star_{c['id']}'] {{"
+                f"  position:absolute!important;top:10px!important;right:14px!important;"
+                f"  width:44px!important;height:44px!important;"
+                f"  background:transparent!important;border:none!important;"
+                f"  box-shadow:none!important;padding:0!important;"
+                f"  opacity:0!important;cursor:pointer!important;"
+                f"}}"
+                f"</style>",
+                unsafe_allow_html=True)
+            if st.button("★", key=f"fav_star_{c['id']}"):
+                if ja_fav:
+                    st.session_state.favoritos = [
+                        f for f in st.session_state.favoritos if f['id'] != c['id']
+                    ]
+                else:
+                    st.session_state.favoritos.append(c)
+                st.rerun()
+
+            # Navegação — 3 botões limpos
+            b_vol, bp, bac = st.columns(3)
             with b_vol:
                 if st.button("← VOLTAR", key=f"vol_{c['id']}", use_container_width=True):
                     cur = st.session_state.pular_idx.get(setor, 0)
@@ -1784,17 +1818,6 @@ for i, setor in enumerate(SETORES):
                 if st.button("PULAR →", key=f"pul_{c['id']}", use_container_width=True):
                     cur = st.session_state.pular_idx.get(setor, 0)
                     st.session_state.pular_idx[setor] = (cur + 1) % len(fila)
-                    st.rerun()
-            with b_fav:
-                ja_fav = any(f['id'] == c['id'] for f in st.session_state.favoritos)
-                label_fav = "FAVORITADO" if ja_fav else "FAVORITAR"
-                if st.button(label_fav, key=f"fav_{c['id']}", use_container_width=True):
-                    if ja_fav:
-                        st.session_state.favoritos = [
-                            f for f in st.session_state.favoritos if f['id'] != c['id']
-                        ]
-                    else:
-                        st.session_state.favoritos.append(c)
                     st.rerun()
             with bac:
                 if st.button("ACEITAR", key=f"acc_{c['id']}", type="primary", use_container_width=True):
@@ -1941,20 +1964,89 @@ with abas[7]:
             df     = c['data_entrevista'].strftime('%d/%m/%Y') if c.get('data_entrevista') else '—'
             cls    = "card-alerta" if alerta else "card-pendente"
             st.markdown(f"<div class='{cls}'>", unsafe_allow_html=True)
-            cc1, cc2 = st.columns([3,1])
+
+            cc1, cc2, cc3 = st.columns([3, 1, 1])
             with cc1:
                 st.markdown(f"**{c['nome']}**")
-                st.markdown(f"<span style='font-size:12px;color:#8A94A6;'>{c.get('email','—')} &nbsp;·&nbsp; Entrevista: <b>{df}</b></span>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<span style='font-size:12px;color:#8A94A6;'>"
+                    f"{c.get('email','—')} &nbsp;·&nbsp; Entrevista: <b>{df}</b>"
+                    f"</span>", unsafe_allow_html=True)
                 if alerta:
-                    st.markdown("<span style='color:#9B2C2C;font-size:12px;font-weight:700;'>TODOS OS HORARIOS ESGOTARAM — REAGENDE MANUALMENTE.</span>", unsafe_allow_html=True)
+                    st.markdown(
+                        "<span style='color:#9B2C2C;font-size:12px;font-weight:700;'>"
+                        "TODOS OS HORARIOS ESGOTARAM — REAGENDE MANUALMENTE.</span>",
+                        unsafe_allow_html=True)
             with cc2:
-                if st.button("Mover", key=f"mv_{c['id']}", use_container_width=True):
+                if st.button("Agendar", key=f"mv_{c['id']}", use_container_width=True,
+                             type="primary"):
                     c['hora_entrevista'] = c.get('opcao_1', datetime.time(9,0))
                     st.session_state.agendados.append(c)
                     st.session_state.aguardando_retorno.remove(c)
                     salvar_json()
                     st.rerun()
+            with cc3:
+                if st.button("Nao Contratar", key=f"nc_{c['id']}", use_container_width=True):
+                    st.session_state['nao_contratar_foco'] = c['id']
+                    st.rerun()
+
             st.markdown("</div>", unsafe_allow_html=True)
+
+            # ── Modal de confirmação de não contratar ─────────
+            if st.session_state.get('nao_contratar_foco') == c['id']:
+                with st.container():
+                    st.markdown(
+                        "<div style='background:#FFFAF8;border:1.5px solid #E5BCBC;"
+                        "border-radius:14px;padding:22px 26px;margin-top:8px;'>",
+                        unsafe_allow_html=True)
+                    st.markdown(
+                        "<div style='font-size:13px;font-weight:700;color:#9B2C2C;"
+                        "margin-bottom:14px;'>Confirmar — Nao Contratar</div>",
+                        unsafe_allow_html=True)
+
+                    msg_padrao = (
+                        f"Olá {c['nome'].title()}, tudo bem?\n\n"
+                        f"Aqui é a equipe de RH do Hospital de Olhos Vale do Aço.\n\n"
+                        f"Gostaríamos de agradecer seu interesse e sua disponibilidade "
+                        f"durante o nosso processo seletivo.\n\n"
+                        f"Após análise cuidadosa, optamos por seguir com outro perfil "
+                        f"para esta oportunidade no momento. Seu currículo permanecerá "
+                        f"em nossa base de dados e entraremos em contato em novas "
+                        f"oportunidades que surgirem.\n\n"
+                        f"Muito obrigada pela sua compreensão e boa sorte!\n\n"
+                        f"Atenciosamente,\nEquipe de RH — Hospital de Olhos Vale do Aço"
+                    )
+
+                    msg_edit = st.text_area(
+                        "Mensagem que será enviada por e-mail:",
+                        value=msg_padrao,
+                        height=220,
+                        key=f"msg_nc_{c['id']}")
+
+                    col_canc, col_env = st.columns(2)
+                    with col_canc:
+                        if st.button("Cancelar", key=f"nc_canc_{c['id']}",
+                                     use_container_width=True):
+                            st.session_state['nao_contratar_foco'] = None
+                            st.rerun()
+                    with col_env:
+                        if st.button("CONFIRMAR E ENVIAR", key=f"nc_env_{c['id']}",
+                                     type="primary", use_container_width=True):
+                            with st.spinner("Enviando mensagem..."):
+                                ok = send_email(
+                                    c['email'],
+                                    "Hospital de Olhos Vale do Aço — Processo Seletivo",
+                                    msg_edit)
+                            st.session_state.aguardando_retorno.remove(c)
+                            st.session_state['nao_contratar_foco'] = None
+                            salvar_json()
+                            if ok:
+                                st.success(f"Mensagem enviada para {c['nome']}.")
+                            else:
+                                st.warning("Candidato removido, mas o e-mail falhou. Avise manualmente.")
+                            time.sleep(1)
+                            st.rerun()
+                    st.markdown("</div>", unsafe_allow_html=True)
 
 # ── ABA 8: CENTRO DE GESTÃO DE PESSOAS ────
 with abas[8]:
