@@ -754,19 +754,165 @@ def iniciais(nome):
     if len(p) >= 2: return f"{p[0][0]}{p[-1][0]}".upper()
     return nome[:2].upper() if nome else "CV"
 
-def resumo(texto):
-    pads = ['experiencia','formacao','historico profissional','cursos','qualificacoes','habilidades']
-    tl   = texto.lower()
-    ini  = min((tl.find(p) for p in pads if tl.find(p)!=-1), default=-1)
-    r    = texto[ini:ini+1500] if ini!=-1 else texto[:1500]
-    if len(texto) > len(r): r = r.rsplit(' ',1)[0]+"..."
-    r = r.replace('\n',' ')
-    r = re.sub(
-        r'(QUALIFICACOES|FORMACAO|EXPERIENCIA|OBJETIVOS|RESUMO|CURSOS|HABILIDADES)',
-        r'<br><br><b style="color:#004D40;font-size:12px;letter-spacing:1px;">\1</b><br>',
-        r, flags=re.IGNORECASE
+def resumo_ia(texto: str) -> str:
+    """
+    Gera um resumo inteligente do currículo usando a API do Claude.
+    Foca em: endereço/cidade, experiências (empresa + cargo + período) e formação.
+    Retorna HTML formatado para exibição no card.
+    """
+    if not texto or len(texto.strip()) < 30:
+        return "<i style='color:#9AA5B4;'>Texto insuficiente para análise.</i>"
+
+    # Limitar texto enviado à API (economiza tokens)
+    texto_truncado = texto[:4000]
+
+    prompt = f"""Analise este currículo e extraia APENAS as informações mais relevantes para um recrutador de hospital.
+Responda SOMENTE em JSON válido, sem texto antes ou depois, sem markdown.
+
+Formato exato:
+{{
+  "nome_completo": "nome extraído ou vazio",
+  "cidade": "cidade/bairro se encontrado, senão vazio",
+  "telefone": "telefone se encontrado, senão vazio",
+  "experiencias": [
+    {{"empresa": "nome", "cargo": "cargo", "periodo": "periodo"}},
+    {{"empresa": "nome", "cargo": "cargo", "periodo": "periodo"}}
+  ],
+  "formacao": "último grau ou curso relevante",
+  "observacao": "algo relevante como CNH, idioma, certificação de saúde (máx 1 linha)"
+}}
+
+Regras:
+- Inclua no máximo 3 experiências (as mais recentes)
+- Se não encontrar algo, deixe vazio ou lista vazia
+- Não invente dados
+- experiencias deve ser sempre uma lista, mesmo vazia
+
+CURRICULO:
+{texto_truncado}"""
+
+    try:
+        import urllib.request
+        import json as _json
+
+        payload = _json.dumps({
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 600,
+            "messages": [{"role": "user", "content": prompt}]
+        }).encode("utf-8")
+
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+
+        raw = data["content"][0]["text"].strip()
+        # Limpar possível markdown
+        raw = re.sub(r'^```json|^```|```$', '', raw.strip(), flags=re.MULTILINE).strip()
+        info = _json.loads(raw)
+
+    except Exception as e:
+        # Fallback: extração manual simples se a API falhar
+        return _resumo_fallback(texto)
+
+    # ── Montar HTML do card de resumo ──
+    html = []
+
+    # Cidade e telefone
+    meta = []
+    if info.get("cidade"):
+        meta.append(f"<span style='color:#004D40;font-weight:700;'>{info['cidade']}</span>")
+    if info.get("telefone"):
+        meta.append(f"<span style='color:#4A5568;'>{info['telefone']}</span>")
+    if meta:
+        html.append("<div style='margin-bottom:14px;font-size:13px;'>" + "&nbsp;&nbsp;·&nbsp;&nbsp;".join(meta) + "</div>")
+
+    # Experiências
+    exps = info.get("experiencias", [])
+    if exps:
+        html.append(
+            "<div style='font-size:10px;font-weight:800;color:#004D40;letter-spacing:2px;"
+            "text-transform:uppercase;margin-bottom:8px;'>Experiências</div>"
+        )
+        for ex in exps[:3]:
+            empresa = ex.get("empresa", "")
+            cargo   = ex.get("cargo", "")
+            periodo = ex.get("periodo", "")
+            if empresa or cargo:
+                html.append(
+                    f"<div style='margin-bottom:10px;padding:10px 14px;"
+                    f"background:#F0FAF8;border-radius:8px;border-left:3px solid #004D40;'>"
+                    f"<div style='font-weight:700;font-size:13px;color:#0D1B2A;'>{empresa}</div>"
+                    f"<div style='font-size:12px;color:#4A5568;margin-top:2px;'>{cargo}</div>"
+                    f"<div style='font-size:11px;color:#9AA5B4;margin-top:2px;'>{periodo}</div>"
+                    f"</div>"
+                )
+    else:
+        html.append("<div style='color:#9AA5B4;font-size:12px;font-style:italic;'>Nenhuma experiência identificada.</div>")
+
+    # Formação
+    if info.get("formacao"):
+        html.append(
+            f"<div style='margin-top:10px;font-size:11px;color:#4A5568;'>"
+            f"<span style='font-weight:700;color:#004D40;font-size:10px;"
+            f"letter-spacing:1.5px;text-transform:uppercase;'>Formação</span>"
+            f"&nbsp;&nbsp;{info['formacao']}</div>"
+        )
+
+    # Observação
+    if info.get("observacao"):
+        html.append(
+            f"<div style='margin-top:8px;font-size:11px;color:#4A5568;'>"
+            f"<span style='font-weight:700;color:#004D40;font-size:10px;"
+            f"letter-spacing:1.5px;text-transform:uppercase;'>Obs.</span>"
+            f"&nbsp;&nbsp;{info['observacao']}</div>"
+        )
+
+    return "\n".join(html) if html else _resumo_fallback(texto)
+
+
+def _resumo_fallback(texto: str) -> str:
+    """Extração manual simples usada quando a API não está disponível."""
+    if not texto or not texto.strip():
+        return "<i style='color:#9AA5B4;'>Nenhum texto extraído do documento.</i>"
+
+    texto = re.sub(r'\r\n|\r', '\n', texto)
+    texto = re.sub(r'\n{3,}', '\n\n', texto).strip()
+
+    marcadores = [
+        'experiência', 'experiencia', 'histórico profissional', 'historico profissional',
+        'formação', 'formacao', 'qualificações', 'qualificacoes',
+        'cursos', 'habilidades', 'objetivos'
+    ]
+    tl  = texto.lower()
+    ini = -1
+    for m in marcadores:
+        idx = tl.find(m)
+        if idx != -1 and (ini == -1 or idx < ini):
+            ini = idx
+
+    trecho = texto[ini:ini + 1800] if ini != -1 else texto[:1800]
+    trecho_html = trecho.replace('\n\n', '<br><br>').replace('\n', '<br>')
+    trecho_html = re.sub(
+        r'(?i)(experiência|experiencia|formação|formacao|historico profissional|'
+        r'qualificações|qualificacoes|cursos?|habilidades|objetivos?)',
+        r'<br><b style="color:#004D40;font-size:11px;font-weight:800;'
+        r'letter-spacing:1.5px;text-transform:uppercase;">\1</b><br>',
+        trecho_html
     )
-    return r
+    return trecho_html
+
+
+# Alias — o código usa resumo() em vários lugares
+def resumo(texto: str) -> str:
+    return resumo_ia(texto)
+
+
 
 def setor_cv(assunto, texto):
     t = f"{assunto} {texto}".lower()
