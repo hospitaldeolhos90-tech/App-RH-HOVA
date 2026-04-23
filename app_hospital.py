@@ -792,9 +792,10 @@ _def = {
     'cvs': [], 'agendados': [], 'contratados': [],
     'aguardando_retorno': [], 'cvs_antigos': [],
     'ex_funcionarios': [],
+    'favoritos': [],
     'historico_emails': set(),
     'candidato_foco': None, 'contratar_foco': None,
-    'perfil_foco': None,       # ID do funcionário com dossiê aberto
+    'perfil_foco': None,
     'pular_idx': {},
     'sync_msg': None, 'sync_logs': [],
     'executar_sync': False, 'limite_sync': 30,
@@ -1399,7 +1400,7 @@ with st.sidebar:
 
     st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.08);margin:18px 0;'>", unsafe_allow_html=True)
     if st.button("LIMPAR MEMORIA", use_container_width=True):
-        for k in ['cvs','agendados','contratados','aguardando_retorno','cvs_antigos','ex_funcionarios']:
+        for k in ['cvs','agendados','contratados','aguardando_retorno','cvs_antigos','ex_funcionarios','favoritos']:
             st.session_state[k] = []
         st.session_state.historico_emails = set()
         st.session_state._processados     = set()
@@ -1508,7 +1509,7 @@ st.write("")
 abas = st.tabs([
     "TRIAGEM GERAL","RECEPCAO","TEC. ENFERMAGEM",
     "ADMINISTRATIVO","FATURAMENTO","JOVEM APRENDIZ",
-    "AGENDADOS","AGUARDANDO RETORNO","CONTRATADOS","BANCO ANTIGOS"
+    "AGENDADOS","AGUARDANDO RETORNO","CONTRATADOS","FAVORITOS","BANCO ANTIGOS"
 ])
 
 SETORES = [
@@ -1755,7 +1756,7 @@ for i, setor in enumerate(SETORES):
                 st.markdown("<div class='notif notif-info'>Candidato cadastrado manualmente — sem arquivo físico.</div>", unsafe_allow_html=True)
 
             st.write("")
-            br, bp, bac = st.columns(3)
+            br, _, __ = st.columns(3)
             with br:
                 if st.button("REJEITAR", key=f"rej_{c['id']}", type="secondary", use_container_width=True):
                     mr = (f"Olá {c['nome'].title()},\n\n"
@@ -1771,10 +1772,29 @@ for i, setor in enumerate(SETORES):
                     st.session_state.pular_idx[setor] = max(0, min(idx, nt-1)) if nt>0 else 0
                     salvar_json()
                     st.rerun()
-            with bp:
-                if st.button("PULAR", key=f"pul_{c['id']}", use_container_width=True):
+
+            # Navegação ← → + Favoritar + Aceitar em 4 colunas
+            b_vol, bp, b_fav, bac = st.columns(4)
+            with b_vol:
+                if st.button("← VOLTAR", key=f"vol_{c['id']}", use_container_width=True):
                     cur = st.session_state.pular_idx.get(setor, 0)
-                    st.session_state.pular_idx[setor] = (cur+1) % len(fila)
+                    st.session_state.pular_idx[setor] = (cur - 1) % len(fila)
+                    st.rerun()
+            with bp:
+                if st.button("PULAR →", key=f"pul_{c['id']}", use_container_width=True):
+                    cur = st.session_state.pular_idx.get(setor, 0)
+                    st.session_state.pular_idx[setor] = (cur + 1) % len(fila)
+                    st.rerun()
+            with b_fav:
+                ja_fav = any(f['id'] == c['id'] for f in st.session_state.favoritos)
+                label_fav = "FAVORITADO" if ja_fav else "FAVORITAR"
+                if st.button(label_fav, key=f"fav_{c['id']}", use_container_width=True):
+                    if ja_fav:
+                        st.session_state.favoritos = [
+                            f for f in st.session_state.favoritos if f['id'] != c['id']
+                        ]
+                    else:
+                        st.session_state.favoritos.append(c)
                     st.rerun()
             with bac:
                 if st.button("ACEITAR", key=f"acc_{c['id']}", type="primary", use_container_width=True):
@@ -1997,51 +2017,49 @@ with abas[8]:
     # ── CSS ciano para este módulo ───────────────────────────────
     st.markdown("""
     <style>
-    .ciano { color: #0891B2 !important; }
+    .ciano { color: #004D40 !important; }
     .btn-ciano div[data-testid="stButton"] button[kind="primary"] {
-        background: linear-gradient(135deg,#0891B2,#06B6D4) !important;
-        box-shadow: 0 2px 10px rgba(8,145,178,0.3) !important;
+        background: linear-gradient(135deg,#004D40,#26A69A) !important;
+        box-shadow: 0 2px 10px rgba(0,77,64,0.25) !important;
     }
     .btn-ciano div[data-testid="stButton"] button[kind="primary"]:hover {
-        background: #0E7490 !important;
+        background: #003329 !important;
     }
     .dossie-header {
-        background: linear-gradient(160deg,#F0FDFF,#E0F7FA);
-        border: 1px solid #B2EBF2;
+        background: linear-gradient(160deg,#F2FAF8,#E6F4F1);
+        border: 1px solid #B2DFDB;
         border-radius: 20px;
         padding: 36px 40px 28px;
         text-align: center;
-        margin-bottom: 24px;
+        margin-bottom: 20px;
         position: relative;
+        overflow: hidden;
     }
     .dossie-header::before {
         content:''; position:absolute; left:0; top:0; bottom:0;
-        width:5px; background:linear-gradient(180deg,#0891B2,#26A69A);
+        width:5px; background:linear-gradient(180deg,#004D40,#26A69A);
         border-radius:20px 0 0 20px;
     }
     .func-avatar-xl {
         width:110px; height:110px; border-radius:50%;
-        background:linear-gradient(145deg,#0891B2,#06B6D4);
+        background:linear-gradient(145deg,#004D40,#26A69A);
         color:#FFF; display:flex; justify-content:center; align-items:center;
         font-size:34px; font-weight:900;
         margin:0 auto 16px auto;
-        box-shadow:0 6px 24px rgba(8,145,178,0.3);
+        box-shadow:0 6px 24px rgba(0,77,64,0.3);
         letter-spacing:1px;
     }
-    .func-avatar-xl-img {
-        width:110px; height:110px; border-radius:50%; object-fit:cover;
-        border:4px solid #0891B2; margin:0 auto 16px auto; display:block;
-        box-shadow:0 6px 24px rgba(8,145,178,0.2);
+    .func-avatar-xl-foto {
+        width:110px; height:110px; border-radius:50%;
+        background-size: cover;
+        background-position: center center;
+        background-repeat: no-repeat;
+        border:4px solid #B2DFDB;
+        margin:0 auto 16px auto;
+        box-shadow:0 6px 24px rgba(0,0,0,0.15);
     }
-    .checklist-item {
-        display:flex; align-items:center; gap:10px;
-        padding:8px 14px; border-radius:8px; margin-bottom:6px;
-        font-size:13px;
-    }
-    .check-ok  { background:#F0FDF4; color:#166534; border:1px solid #BBF7D0; }
-    .check-no  { background:#FFF7ED; color:#92540A; border:1px solid #FED7AA; }
     .ntw-box {
-        background:#F0FDFF; border:1.5px solid #0891B2;
+        background:#F2FAF8; border:1.5px solid #004D40;
         border-radius:14px; padding:22px 26px; margin-top:16px;
     }
     .func-card-v2 {
@@ -2063,7 +2081,7 @@ with abas[8]:
     with st.expander("Cadastrar Colaborador Existente"):
         with st.form("form_colab_antigo", clear_on_submit=True):
             st.markdown(
-                "<div style='font-size:12px;font-weight:800;color:#0891B2;"
+                "<div style='font-size:12px;font-weight:800;color:#004D40;"
                 "letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;'>"
                 "Novo Colaborador</div>", unsafe_allow_html=True)
 
@@ -2179,8 +2197,9 @@ with abas[8]:
                 # ── Header do perfil ─────────────────────────────
                 if func.get('foto'):
                     b64f    = base64.b64encode(func['foto']).decode()
-                    av_html = (f"<img src='data:image/jpeg;base64,{b64f}'"
-                               f" class='func-avatar-xl-img'>")
+                    av_html = (f"<div class='func-avatar-xl-foto'"
+                               f" style='background-image:url(\"data:image/jpeg;"
+                               f"base64,{b64f}\");'></div>")
                 else:
                     av_html = (f"<div class='func-avatar-xl'>"
                                f"{iniciais(func['nome'])}</div>")
@@ -2197,7 +2216,7 @@ with abas[8]:
                     f"{av_html}"
                     f"<div style='font-size:24px;font-weight:900;color:#0D1B2A;"
                     f"margin-bottom:4px;'>{func['nome']}</div>"
-                    f"<div style='font-size:12px;color:#0891B2;font-weight:700;"
+                    f"<div style='font-size:12px;color:#004D40;font-weight:700;"
                     f"letter-spacing:1.5px;text-transform:uppercase;'>"
                     f"{func.get('cargo_atual','—')}</div>"
                     f"<div style='font-size:11px;color:#9AA5B4;margin-top:6px;'>"
@@ -2258,7 +2277,7 @@ with abas[8]:
                     with st.form(f"form_dados_{func['id']}"):
                         st.markdown(
                             "<div style='font-size:10px;font-weight:800;"
-                            "color:#0891B2;letter-spacing:2px;"
+                            "color:#004D40;letter-spacing:2px;"
                             "text-transform:uppercase;margin-bottom:16px;'>"
                             "Informações Pessoais e Contratuais</div>",
                             unsafe_allow_html=True)
@@ -2360,7 +2379,7 @@ with abas[8]:
                 # ── TAB 2: DOCUMENTOS ────────────────────────────
                 with tab_docs:
                     st.markdown(
-                        "<div style='font-size:10px;font-weight:800;color:#0891B2;"
+                        "<div style='font-size:10px;font-weight:800;color:#004D40;"
                         "letter-spacing:2px;text-transform:uppercase;"
                         "margin-bottom:16px;'>Checklist de Documentos</div>",
                         unsafe_allow_html=True)
@@ -2391,7 +2410,7 @@ with abas[8]:
                     total_docs = len(DOCS_LISTA)
                     ok_docs    = sum(novos_checks.values())
                     pct        = int(ok_docs / total_docs * 100)
-                    cor_pct    = "#166534" if pct == 100 else ("#0891B2" if pct >= 50 else "#92540A")
+                    cor_pct    = "#166534" if pct == 100 else ("#004D40" if pct >= 50 else "#92540A")
                     st.markdown(
                         f"<div style='margin:16px 0 20px;padding:12px 18px;"
                         f"background:#F8FAFB;border-radius:10px;border:1px solid #E2E6EA;"
@@ -2401,7 +2420,7 @@ with abas[8]:
 
                     # Upload de PDFs
                     st.markdown(
-                        "<div style='font-size:10px;font-weight:800;color:#0891B2;"
+                        "<div style='font-size:10px;font-weight:800;color:#004D40;"
                         "letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;'>"
                         "Adicionar PDF ao Dossiê</div>", unsafe_allow_html=True)
 
@@ -2451,7 +2470,7 @@ with abas[8]:
                 with tab_ntw:
                     st.markdown(
                         "<div class='ntw-box'>"
-                        "<div style='font-size:14px;font-weight:800;color:#0891B2;"
+                        "<div style='font-size:14px;font-weight:800;color:#004D40;"
                         "margin-bottom:4px;'>Encaminhar para Contabilidade</div>"
                         "<div style='font-size:12px;color:#4A5568;'>"
                         "Envia e-mail para <b>pessoal.expert@ntwdoctor.com.br</b> "
@@ -2489,7 +2508,7 @@ with abas[8]:
                         docs_disponiveis = [k for k,v in func.get('documentos',{}).items() if v]
                         if docs_disponiveis:
                             st.markdown(
-                                f"<div style='font-size:12px;color:#0891B2;"
+                                f"<div style='font-size:12px;color:#004D40;"
                                 f"font-weight:600;margin-top:8px;'>"
                                 f"PDFs que serão anexados: "
                                 f"{', '.join(docs_disponiveis)}</div>",
@@ -2557,9 +2576,8 @@ with abas[8]:
             .hova-card-foto {
                 width: 110px; height: 110px;
                 border-radius: 50%;
-                background-size: cover;
-                background-position: center center;
-                background-repeat: no-repeat;
+                object-fit: cover;
+                object-position: center top;
                 border: 4px solid #E0F2F1;
                 display: block;
                 margin: 0 auto 16px auto;
@@ -2633,9 +2651,8 @@ with abas[8]:
                         # Avatar
                         if f.get('foto'):
                             b64f = base64.b64encode(f['foto']).decode()
-                            av   = (f"<div class='hova-card-foto'"
-                                    f" style='background-image:url(\"data:image/jpeg;base64,{b64f}\");'>"
-                                    f"</div>")
+                            av   = (f"<img src='data:image/jpeg;base64,{b64f}'"
+                                    f" class='hova-card-foto'>")
                         else:
                             av   = (f"<div class='hova-card-iniciais'>"
                                     f"{iniciais(f['nome'])}</div>")
@@ -2721,8 +2738,86 @@ with abas[8]:
                         st.success(f"{f['nome']} reativado.")
                         st.rerun()
 
-# ── ABA 9: BANCO ANTIGOS ──────────────────
+# ── ABA 9: FAVORITOS ──────────────────────
 with abas[9]:
+    favs = _busca(st.session_state.favoritos, termo)
+    n_fav = len(favs)
+
+    st.markdown(
+        f"<div style='font-size:12px;color:#8A94A6;margin-bottom:20px;'>"
+        f"<b style='color:#004D40;font-size:22px;font-weight:900;'>{n_fav}</b>"
+        f" currículo(s) favoritado(s)</div>",
+        unsafe_allow_html=True)
+
+    if not favs:
+        st.markdown(
+            '<div class="empty">'
+            '<div class="e-title">NENHUM FAVORITO</div>'
+            '<div class="e-sub">Durante a triagem, clique em FAVORITAR para guardar '
+            'candidatos que te interessam.</div></div>',
+            unsafe_allow_html=True)
+    else:
+        N = 4
+        for row_start in range(0, n_fav, N):
+            row  = favs[row_start:row_start+N]
+            cols = st.columns(N)
+            for j, c in enumerate(row):
+                with cols[j]:
+                    cargo_exib = (c.get('setor','—')).upper()
+                    tel_fmt    = c.get('telefone','')
+                    if len(tel_fmt) == 11:
+                        tel_fmt = f"{tel_fmt[:2]} {tel_fmt[2]} {tel_fmt[3:7]}-{tel_fmt[7:]}"
+
+                    if c.get('foto'):
+                        b64f = base64.b64encode(c['foto']).decode()
+                        av   = (f"<div style='width:88px;height:88px;border-radius:50%;"
+                                f"background-image:url(\"data:image/jpeg;base64,{b64f}\");"
+                                f"background-size:cover;background-position:center;"
+                                f"border:3px solid #004D40;"
+                                f"margin:0 auto 14px auto;"
+                                f"box-shadow:0 4px 14px rgba(0,77,64,0.2);'></div>")
+                    else:
+                        av = (f"<div style='width:88px;height:88px;border-radius:50%;"
+                              f"background:linear-gradient(145deg,#004D40,#26A69A);"
+                              f"color:#FFF;display:flex;justify-content:center;"
+                              f"align-items:center;font-size:28px;font-weight:900;"
+                              f"margin:0 auto 14px auto;"
+                              f"box-shadow:0 4px 14px rgba(0,77,64,0.25);'>"
+                              f"{iniciais(c['nome'])}</div>")
+
+                    st.markdown(
+                        f"<div class='hova-card'>"
+                        f"{av}"
+                        f"<div class='hova-card-nome'>{c['nome']}</div>"
+                        f"<div class='hova-card-cargo-bar'>{cargo_exib}</div>"
+                        f"<div class='hova-card-tel'>{tel_fmt}</div>"
+                        f"<div class='hova-card-data'>{c.get('data','—')}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True)
+
+                    fc1, fc2 = st.columns(2)
+                    with fc1:
+                        # Remover dos favoritos
+                        if st.button("Remover", key=f"desfav_{c['id']}",
+                                     use_container_width=True):
+                            st.session_state.favoritos = [
+                                f for f in st.session_state.favoritos
+                                if f['id'] != c['id']
+                            ]
+                            st.rerun()
+                    with fc2:
+                        # Aceitar direto dos favoritos
+                        if st.button("ACEITAR", key=f"fav_acc_{c['id']}",
+                                     type="primary", use_container_width=True):
+                            st.session_state.candidato_foco = c['id']
+                            st.rerun()
+
+            for j in range(len(row), N):
+                cols[j].empty()
+            st.write("")
+
+# ── ABA 10: BANCO ANTIGOS ─────────────────
+with abas[10]:
     c_mes, c_bsc = st.columns([1,2])
     with c_mes:
         fm_ant = st.selectbox("", ["Todos"]+list(MESES_NOMES.values()), key="fm_ant", label_visibility="collapsed")
