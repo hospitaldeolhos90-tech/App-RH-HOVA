@@ -2558,10 +2558,11 @@ with abas[8]:
                 width: 110px; height: 110px;
                 border-radius: 50%;
                 object-fit: cover;
+                object-position: center top;
                 border: 4px solid #E0F2F1;
                 display: block;
-                margin: 0 auto 14px auto;
-                box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+                margin: 0 auto 16px auto;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.14);
             }
             .hova-card-iniciais {
                 width: 110px; height: 110px;
@@ -2570,14 +2571,14 @@ with abas[8]:
                 color: #FFF;
                 display: flex; justify-content: center; align-items: center;
                 font-size: 36px; font-weight: 900;
-                margin: 0 auto 14px auto;
+                margin: 0 auto 16px auto;
                 box-shadow: 0 4px 18px rgba(0,77,64,0.28);
                 letter-spacing: 1px;
             }
             .hova-card-nome {
-                font-size: 14px; font-weight: 800;
+                font-size: 15px; font-weight: 800;
                 color: #0D1B2A; text-transform: uppercase;
-                letter-spacing: 0.5px; line-height: 1.2;
+                letter-spacing: 0.8px; line-height: 1.2;
                 margin-bottom: 10px;
             }
             .hova-card-cargo-bar {
@@ -2585,19 +2586,27 @@ with abas[8]:
                 color: #FFFFFF;
                 font-size: 11px; font-weight: 700;
                 letter-spacing: 1.5px; text-transform: uppercase;
-                padding: 7px 10px;
+                padding: 8px 12px;
                 border-radius: 8px;
                 margin-bottom: 12px;
             }
             .hova-card-tel {
-                font-size: 12px; color: #4A5568;
-                margin-bottom: 14px; font-weight: 500;
+                font-size: 13px;
+                color: #2D3748;
+                margin-bottom: 10px;
+                font-weight: 600;
+            }
+            .hova-card-data {
+                font-size: 11px;
+                color: #718096;
+                margin-bottom: 4px;
+                font-weight: 500;
             }
             .hova-card-ntw {
                 background: #DCFCE7; color: #166534;
                 font-size: 9px; font-weight: 700;
-                padding: 2px 8px; border-radius: 20px;
-                display: inline-block; margin-bottom: 10px;
+                padding: 3px 10px; border-radius: 20px;
+                display: inline-block; margin-bottom: 8px;
                 letter-spacing: 1px;
             }
             </style>
@@ -2631,7 +2640,7 @@ with abas[8]:
 
                         ntw_html = ("<div class='hova-card-ntw'>NTW ENVIADO</div>"
                                     if f.get('ntw_enviado') else "")
-                        tel_html = (f"<div class='hova-card-tel'>&#128222; {tel_fmt}</div>"
+                        tel_html = (f"<div class='hova-card-tel'>{tel_fmt}</div>"
                                     if tel_fmt else "")
 
                         st.markdown(
@@ -2641,7 +2650,7 @@ with abas[8]:
                             f"<div class='hova-card-cargo-bar'>{cargo_exib}</div>"
                             f"{tel_html}"
                             f"{ntw_html}"
-                            f"<div style='font-size:10px;color:#B0BAC8;'>Desde {ini_f}</div>"
+                            f"<div class='hova-card-data'>Desde {ini_f}</div>"
                             f"</div>",
                             unsafe_allow_html=True
                         )
