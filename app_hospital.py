@@ -1333,10 +1333,9 @@ for i, setor in enumerate(SETORES):
             if c.get('arquivo_bytes') and c.get('nome_arquivo'):
                 with st.expander("Ver documento original"):
                     if c['nome_arquivo'].lower().endswith('.pdf'):
-                        b64p     = base64.b64encode(c['arquivo_bytes']).decode()
-                        data_uri = f"data:application/pdf;base64,{b64p}"
+                        b64p = base64.b64encode(c['arquivo_bytes']).decode()
 
-                        # ── Botão de download (sempre funciona) ──
+                        # ── Botão de download sempre visível ──
                         st.download_button(
                             label    = f"Baixar PDF — {c['nome_arquivo']}",
                             data     = c['arquivo_bytes'],
@@ -1346,27 +1345,105 @@ for i, setor in enumerate(SETORES):
                             key      = f"dl_{c['id']}"
                         )
 
-                        # ── Visualizador inline via <object> (mais compatível que iframe) ──
-                        st.markdown(
-                            f'<object data="{data_uri}" type="application/pdf"'
-                            f' width="100%" height="700"'
-                            f' style="border:1px solid #E2E6EA;border-radius:8px;'
-                            f'display:block;margin-top:12px;">'
-                            f'<p style="padding:20px;color:#8A94A6;font-size:13px;">'
-                            f'Seu navegador não suporta visualização inline de PDF. '
-                            f'Use o botão acima para baixar.</p>'
-                            f'</object>',
-                            unsafe_allow_html=True
-                        )
+                        # ── Viewer via PDF.js (Mozilla CDN) — funciona no Chrome/Streamlit Cloud ──
+                        import streamlit.components.v1 as components
+                        pdf_viewer_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * {{ margin:0; padding:0; box-sizing:border-box; }}
+    body {{ background:#F8FAFB; font-family:Inter,sans-serif; }}
+    #pdf-container {{
+      width:100%; height:720px;
+      border:1px solid #E2E6EA; border-radius:8px;
+      overflow:hidden; background:#525659;
+    }}
+    canvas {{ display:block; margin:0 auto; }}
+    #toolbar {{
+      background:#323639; padding:8px 16px;
+      display:flex; align-items:center; gap:12px;
+      border-radius:8px 8px 0 0;
+    }}
+    #toolbar button {{
+      background:#004D40; color:#fff; border:none;
+      padding:6px 14px; border-radius:6px; cursor:pointer;
+      font-size:12px; font-weight:700; letter-spacing:0.5px;
+    }}
+    #toolbar button:hover {{ background:#00382E; }}
+    #toolbar span {{ color:#ccc; font-size:12px; }}
+    #canvas-wrapper {{
+      height:672px; overflow-y:auto; background:#525659;
+      display:flex; flex-direction:column; align-items:center;
+      padding:16px 0; gap:12px;
+    }}
+    .page-canvas {{ box-shadow:0 2px 8px rgba(0,0,0,0.4); }}
+  </style>
+</head>
+<body>
+<div id="pdf-container">
+  <div id="toolbar">
+    <button onclick="anteriorPagina()">&#8592; Anterior</button>
+    <span id="info-pagina">Carregando...</span>
+    <button onclick="proximaPagina()">Próxima &#8594;</button>
+    <button onclick="zoomMais()">+ Zoom</button>
+    <button onclick="zoomMenos()">- Zoom</button>
+  </div>
+  <div id="canvas-wrapper"></div>
+</div>
 
-                        # ── Link alternativo ──
-                        st.markdown(
-                            f'<a href="{data_uri}" target="_blank" download="{c["nome_arquivo"]}"'
-                            f' style="font-size:12px;color:#004D40;font-weight:600;'
-                            f'text-decoration:underline;display:inline-block;margin-top:8px;">'
-                            f'Abrir em nova aba</a>',
-                            unsafe_allow_html=True
-                        )
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  const base64 = "{b64p}";
+  const raw    = atob(base64);
+  const arr    = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+
+  let pdfDoc    = null;
+  let paginaAtual = 1;
+  let escala    = 1.4;
+  const wrapper = document.getElementById('canvas-wrapper');
+  const info    = document.getElementById('info-pagina');
+
+  pdfjsLib.getDocument({{ data: arr }}).promise.then(pdf => {{
+    pdfDoc = pdf;
+    renderPagina(paginaAtual);
+  }}).catch(err => {{
+    info.textContent = 'Erro ao carregar PDF: ' + err.message;
+  }});
+
+  function renderPagina(num) {{
+    wrapper.innerHTML = '';
+    pdfDoc.getPage(num).then(page => {{
+      const vp     = page.getViewport({{ scale: escala }});
+      const canvas = document.createElement('canvas');
+      canvas.className = 'page-canvas';
+      canvas.width  = vp.width;
+      canvas.height = vp.height;
+      wrapper.appendChild(canvas);
+      page.render({{ canvasContext: canvas.getContext('2d'), viewport: vp }});
+      info.textContent = 'Página ' + num + ' de ' + pdfDoc.numPages;
+    }});
+  }}
+
+  function anteriorPagina() {{
+    if (paginaAtual > 1) {{ paginaAtual--; renderPagina(paginaAtual); }}
+  }}
+  function proximaPagina() {{
+    if (paginaAtual < pdfDoc.numPages) {{ paginaAtual++; renderPagina(paginaAtual); }}
+  }}
+  function zoomMais()  {{ escala = Math.min(escala + 0.2, 3.0); renderPagina(paginaAtual); }}
+  function zoomMenos() {{ escala = Math.max(escala - 0.2, 0.6); renderPagina(paginaAtual); }}
+</script>
+</body>
+</html>
+"""
+                        components.html(pdf_viewer_html, height=740, scrolling=False)
+
                     else:
                         st.info("Visualização direta disponível apenas para PDF.")
                         st.download_button(
