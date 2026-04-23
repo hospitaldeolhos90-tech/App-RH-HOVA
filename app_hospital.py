@@ -809,6 +809,7 @@ _def = {
     'nao_contratar_foco': None,
     'rejeitar_foco': None,
     'pular_idx': {},
+    'fav_idx': 0,
     'sync_msg': None, 'sync_logs': [],
     'executar_sync': False, 'limite_sync': 30,
     '_processados': set(),
@@ -2885,16 +2886,10 @@ with abas[8]:
 
 # ── ABA 9: FAVORITOS ──────────────────────
 with abas[9]:
-    import streamlit.components.v1 as components
+    import streamlit.components.v1 as _comp
 
     favs  = _busca(st.session_state.favoritos, termo)
     n_fav = len(favs)
-
-    st.markdown(
-        f"<div style='font-size:12px;color:#8A94A6;margin-bottom:20px;'>"
-        f"<b style='color:#004D40;font-size:22px;font-weight:900;'>{n_fav}</b>"
-        f" currículo(s) favoritado(s)</div>",
-        unsafe_allow_html=True)
 
     if not favs:
         st.markdown(
@@ -2903,198 +2898,198 @@ with abas[9]:
             'candidatos de interesse.</div></div>',
             unsafe_allow_html=True)
 
-    # ── Se um candidato dos favoritos foi aceito, mostra o formulário ──
-    elif st.session_state.get('candidato_foco') and \
-         any(c['id'] == st.session_state.candidato_foco for c in favs):
-
-        c = next(x for x in favs if x['id'] == st.session_state.candidato_foco)
-
-        st.markdown("<div class='form-sched'>", unsafe_allow_html=True)
-        st.markdown(
-            "<div style='font-size:16px;font-weight:800;color:#004D40;"
-            "margin-bottom:20px;'>AGENDAR ENTREVISTA</div>",
-            unsafe_allow_html=True)
-
-        fa1, fa2 = st.columns(2)
-        with fa1:
-            st.caption("NOME DO CANDIDATO")
-            ne_fav = st.text_input("", value=c['nome'],
-                                   key=f"fav_ne_{c['id']}", label_visibility="collapsed")
-        with fa2:
-            st.caption("E-MAIL")
-            ee_fav = st.text_input("", value=c['email'],
-                                   key=f"fav_ee_{c['id']}", label_visibility="collapsed")
-
-        st.caption("DATA E HORÁRIOS (3 OPÇÕES)")
-        fd, fh1, fh2, fh3 = st.columns(4)
-        da_fav = fd.date_input("",  key=f"fav_da_{c['id']}", label_visibility="collapsed")
-        h1_fav = fh1.time_input("", datetime.time(9, 0),  key=f"fav_h1_{c['id']}", label_visibility="collapsed")
-        h2_fav = fh2.time_input("", datetime.time(14, 0), key=f"fav_h2_{c['id']}", label_visibility="collapsed")
-        h3_fav = fh3.time_input("", datetime.time(16, 0), key=f"fav_h3_{c['id']}", label_visibility="collapsed")
-
-        msg_fav = (
-            f"Olá {ne_fav},\n\n"
-            f"O Hospital de Olhos Vale do Aço analisou seu perfil e você foi "
-            f"selecionada(o) para a próxima fase do Processo Seletivo.\n\n"
-            f"Temos disponibilidade para o dia {da_fav.strftime('%d/%m/%Y')}. "
-            f"Responda com o NUMERO da sua escolha de horário:\n\n"
-            f"1 - {h1_fav.strftime('%H:%M')}\n"
-            f"2 - {h2_fav.strftime('%H:%M')}\n"
-            f"3 - {h3_fav.strftime('%H:%M')}\n\n"
-            f"Endereço: {ENDERECO_HOVA}\n"
-            f"Ao chegar, pergunte por Josi ou Paula.\n\n"
-            f"Atenciosamente,\nEquipe de RH — HOVA"
-        )
-        with st.expander("Visualizar e-mail que será enviado"):
-            st.code(msg_fav, language=None)
-
-        fbc, fbenv = st.columns(2)
-        with fbc:
-            if st.button("CANCELAR", key=f"fav_canc_{c['id']}",
-                         type="secondary", use_container_width=True):
-                st.session_state.candidato_foco = None
-                st.rerun()
-        with fbenv:
-            if st.button("ENVIAR CONVITE", type="primary",
-                         key=f"fav_conf_{c['id']}", use_container_width=True):
-                with st.spinner("Enviando convite..."):
-                    ok = send_email(ee_fav, "HOVA — Convite para Entrevista", msg_fav)
-                if ok:
-                    c.update({'nome': ne_fav, 'email': ee_fav,
-                              'data_entrevista': da_fav,
-                              'opcao_1': h1_fav, 'opcao_2': h2_fav, 'opcao_3': h3_fav})
-                    st.session_state.aguardando_retorno.append(c)
-                    # Remover dos favoritos ao aceitar
-                    st.session_state.favoritos = [
-                        f for f in st.session_state.favoritos if f['id'] != c['id']
-                    ]
-                    st.session_state.candidato_foco = None
-                    salvar_json()
-                    st.rerun()
-                else:
-                    st.error("Falha no envio. Verifique as configurações de e-mail.")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    # ── Grid de cards dos favoritos ────────────────────────────
     else:
-        N = 4
-        for row_start in range(0, n_fav, N):
-            row  = favs[row_start:row_start+N]
-            cols = st.columns(N)
+        # ── índice de navegação dos favoritos ──
+        if 'fav_idx' not in st.session_state:
+            st.session_state.fav_idx = 0
+        st.session_state.fav_idx = st.session_state.fav_idx % n_fav
 
-            for j, c in enumerate(row):
-                with cols[j]:
-                    cargo_exib = c.get('setor','—').upper()
-                    tel_fmt    = c.get('telefone','')
-                    if len(tel_fmt) == 11:
-                        tel_fmt = f"{tel_fmt[:2]} {tel_fmt[2]} {tel_fmt[3:7]}-{tel_fmt[7:]}"
-                    elif len(tel_fmt) == 10:
-                        tel_fmt = f"{tel_fmt[:2]} {tel_fmt[2:6]}-{tel_fmt[6:]}"
+        idx_fav = st.session_state.fav_idx
+        c = favs[idx_fav]
 
-                    # Avatar
-                    if c.get('foto'):
-                        b64f = base64.b64encode(c['foto']).decode()
-                        av   = (f"<div style='width:88px;height:88px;border-radius:50%;"
-                                f"background-image:url(\"data:image/jpeg;base64,{b64f}\");"
-                                f"background-size:cover;background-position:center;"
-                                f"border:3px solid #F59E0B;"
-                                f"margin:0 auto 14px auto;"
-                                f"box-shadow:0 4px 14px rgba(245,158,11,0.25);'></div>")
+        # Contador
+        st.markdown(
+            f"<div style='font-size:12px;color:#8A94A6;margin-bottom:14px;'>"
+            f"<b style='color:#F59E0B;font-size:17px;'>★ {n_fav}</b> favorito(s)"
+            f" &nbsp;·&nbsp; Exibindo <b style='color:#004D40;'>{idx_fav+1}</b> de {n_fav}"
+            f"</div>", unsafe_allow_html=True)
+
+        # ── FORMULÁRIO DE AGENDAMENTO ──
+        if st.session_state.candidato_foco == c['id']:
+            st.markdown("<div class='form-sched'>", unsafe_allow_html=True)
+            st.markdown(
+                "<div style='font-size:16px;font-weight:800;color:#004D40;"
+                "margin-bottom:20px;'>AGENDAR ENTREVISTA</div>",
+                unsafe_allow_html=True)
+
+            fa1, fa2 = st.columns(2)
+            with fa1:
+                st.caption("NOME DO CANDIDATO")
+                ne_fav = st.text_input("", value=c['nome'],
+                                       key=f"fav_ne_{c['id']}", label_visibility="collapsed")
+            with fa2:
+                st.caption("E-MAIL")
+                ee_fav = st.text_input("", value=c['email'],
+                                       key=f"fav_ee_{c['id']}", label_visibility="collapsed")
+
+            st.caption("DATA E HORÁRIOS (3 OPÇÕES)")
+            fd, fh1, fh2, fh3 = st.columns(4)
+            da_fav = fd.date_input("",  key=f"fav_da_{c['id']}", label_visibility="collapsed")
+            h1_fav = fh1.time_input("", datetime.time(9, 0),  key=f"fav_h1_{c['id']}", label_visibility="collapsed")
+            h2_fav = fh2.time_input("", datetime.time(14, 0), key=f"fav_h2_{c['id']}", label_visibility="collapsed")
+            h3_fav = fh3.time_input("", datetime.time(16, 0), key=f"fav_h3_{c['id']}", label_visibility="collapsed")
+
+            msg_fav = (
+                f"Olá {ne_fav},\n\n"
+                f"O Hospital de Olhos Vale do Aço analisou seu perfil e você foi "
+                f"selecionada(o) para a próxima fase do Processo Seletivo.\n\n"
+                f"Temos disponibilidade para o dia {da_fav.strftime('%d/%m/%Y')}. "
+                f"Responda com o NUMERO da sua escolha de horário:\n\n"
+                f"1 - {h1_fav.strftime('%H:%M')}\n"
+                f"2 - {h2_fav.strftime('%H:%M')}\n"
+                f"3 - {h3_fav.strftime('%H:%M')}\n\n"
+                f"Endereço: {ENDERECO_HOVA}\n"
+                f"Ao chegar, pergunte por Josi ou Paula.\n\n"
+                f"Atenciosamente,\nEquipe de RH — HOVA"
+            )
+            with st.expander("Visualizar e-mail que será enviado"):
+                st.code(msg_fav, language=None)
+
+            fbc, fbenv = st.columns(2)
+            with fbc:
+                if st.button("CANCELAR", key=f"fav_canc_{c['id']}",
+                             type="secondary", use_container_width=True):
+                    st.session_state.candidato_foco = None
+                    st.rerun()
+            with fbenv:
+                if st.button("ENVIAR CONVITE", type="primary",
+                             key=f"fav_conf_{c['id']}", use_container_width=True):
+                    with st.spinner("Enviando convite..."):
+                        ok = send_email(ee_fav, "HOVA — Convite para Entrevista", msg_fav)
+                    if ok:
+                        c.update({'nome': ne_fav, 'email': ee_fav,
+                                  'data_entrevista': da_fav,
+                                  'opcao_1': h1_fav, 'opcao_2': h2_fav, 'opcao_3': h3_fav})
+                        st.session_state.aguardando_retorno.append(c)
+                        st.session_state.favoritos = [
+                            f for f in st.session_state.favoritos if f['id'] != c['id']
+                        ]
+                        st.session_state.candidato_foco = None
+                        st.session_state.fav_idx = 0
+                        salvar_json()
+                        st.rerun()
                     else:
-                        av = (f"<div style='width:88px;height:88px;border-radius:50%;"
-                              f"background:linear-gradient(145deg,#004D40,#26A69A);"
-                              f"color:#FFF;display:flex;justify-content:center;"
-                              f"align-items:center;font-size:28px;font-weight:900;"
-                              f"margin:0 auto 14px auto;"
-                              f"box-shadow:0 4px 14px rgba(0,77,64,0.25);'>"
-                              f"{iniciais(c['nome'])}</div>")
+                        st.error("Falha no envio.")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-                    st.markdown(
-                        f"<div class='hova-card' style='position:relative;'>"
-                        f"<div style='position:absolute;top:12px;right:16px;"
-                        f"font-size:20px;color:#F59E0B;'>★</div>"
-                        f"{av}"
-                        f"<div class='hova-card-nome'>{c['nome']}</div>"
-                        f"<div class='hova-card-cargo-bar'>{cargo_exib}</div>"
-                        f"<div class='hova-card-tel'>{tel_fmt}</div>"
-                        f"<div class='hova-card-data'>{c.get('data','—')}</div>"
-                        f"</div>",
-                        unsafe_allow_html=True)
+        # ── CARD TELA CHEIA (igual triagem) ──
+        else:
+            # Avatar
+            if c.get('foto'):
+                b64 = base64.b64encode(c['foto']).decode()
+                av  = f"<img src='data:image/jpeg;base64,{b64}' class='avatar-img'>"
+            else:
+                av = f"<div class='avatar'>{iniciais(c['nome'])}</div>"
 
-                    # Resumo
-                    if c.get('preview'):
-                        with st.expander("Ver resumo"):
-                            st.markdown(
-                                f"<div class='cv-resumo' style='font-size:12px;'>"
-                                f"{c['preview']}</div>",
-                                unsafe_allow_html=True)
+            cid_b  = f"<span class='tag tag-cinza'>{c['cidade']}</span>" if c.get('cidade') else ""
+            dat_b  = f"<span class='tag tag-azul'>{c['data']}</span>"
+            tags_b = "".join(f"<span class='tag tag-verde'>{t}</span>" for t in c.get('tags',[]))
 
-                    # PDF
-                    if c.get('arquivo_bytes') and c.get('nome_arquivo'):
-                        with st.expander("Ver documento"):
-                            if c['nome_arquivo'].lower().endswith('.pdf'):
-                                b64p = base64.b64encode(c['arquivo_bytes']).decode()
-                                components.html(f"""<!DOCTYPE html><html>
-<head><meta charset="utf-8"><style>*{{margin:0;padding:0;box-sizing:border-box;}}
-#cw{{width:100%;height:480px;background:#525659;overflow-y:auto;
-display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:8px;}}
-canvas{{box-shadow:0 2px 6px rgba(0,0,0,0.4);}}</style></head><body>
+            st.markdown(
+                f"<div class='card-cand' style='position:relative;'>"
+                f"<div style='position:absolute;top:16px;right:20px;"
+                f"font-size:26px;color:#F59E0B;'>★</div>"
+                f"{av}"
+                f"<div class='cand-nome'>{c['nome']}</div>"
+                f"<div style='margin:8px 0;'>{cid_b} {dat_b}</div>"
+                f"<div class='cand-info'>{c['email']}"
+                f"{'  |  '+c['telefone'] if c.get('telefone') else ''}</div>"
+                f"<div style='margin:10px 0;'>{tags_b}</div>"
+                f"<div class='cv-resumo'>{c.get('preview','')}</div></div>",
+                unsafe_allow_html=True)
+
+            # Documento original — tela cheia
+            if c.get('arquivo_bytes') and c.get('nome_arquivo'):
+                with st.expander("Ver documento original"):
+                    if c['nome_arquivo'].lower().endswith('.pdf'):
+                        b64p = base64.b64encode(c['arquivo_bytes']).decode()
+                        _comp.html(f"""<!DOCTYPE html><html>
+<head><meta charset="utf-8"><style>
+*{{margin:0;padding:0;box-sizing:border-box;}}
+body{{background:#525659;}}
+#tb{{background:#323639;padding:8px 14px;display:flex;align-items:center;
+     gap:10px;border-radius:8px 8px 0 0;}}
+#tb button{{background:#004D40;color:#fff;border:none;padding:6px 14px;
+            border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;}}
+#tb span{{color:#ccc;font-size:12px;}}
+#cw{{height:680px;overflow-y:auto;display:flex;flex-direction:column;
+     align-items:center;padding:14px 0;gap:10px;}}
+canvas{{box-shadow:0 2px 8px rgba(0,0,0,0.5);}}
+</style></head><body>
+<div id="tb">
+  <button onclick="prev()">&#8592; Anterior</button>
+  <span id="info">Carregando...</span>
+  <button onclick="next()">Próxima &#8594;</button>
+  <button onclick="zm(0.2)">+ Zoom</button>
+  <button onclick="zm(-0.2)">- Zoom</button>
+</div>
 <div id="cw"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+pdfjsLib.GlobalWorkerOptions.workerSrc=
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 const arr=new Uint8Array(atob('{b64p}').split('').map(x=>x.charCodeAt(0)));
-pdfjsLib.getDocument({{data:arr}}).promise.then(pdf=>{{
-  for(let i=1;i<=pdf.numPages;i++){{pdf.getPage(i).then(pg=>{{
-    const vp=pg.getViewport({{scale:1.2}});
+let pdf,pg=1,sc=1.4;
+pdfjsLib.getDocument({{data:arr}}).promise.then(p=>{{pdf=p;render(pg);}});
+function render(n){{
+  document.getElementById('cw').innerHTML='';
+  pdf.getPage(n).then(page=>{{
+    const vp=page.getViewport({{scale:sc}});
     const cv=document.createElement('canvas');
     cv.width=vp.width;cv.height=vp.height;
     document.getElementById('cw').appendChild(cv);
-    pg.render({{canvasContext:cv.getContext('2d'),viewport:vp}});
-  }});}}
-}});
-</script></body></html>""", height=500, scrolling=False)
-                            st.download_button(
-                                f"Baixar — {c['nome_arquivo']}",
-                                c['arquivo_bytes'],
-                                file_name=c['nome_arquivo'],
-                                mime="application/pdf",
-                                use_container_width=True,
-                                key=f"dl_fav_{c['id']}")
+    page.render({{canvasContext:cv.getContext('2d'),viewport:vp}});
+    document.getElementById('info').textContent='Página '+n+' de '+pdf.numPages;
+  }});
+}}
+function prev(){{if(pg>1){{pg--;render(pg);}}}}
+function next(){{if(pg<pdf.numPages){{pg++;render(pg);}}}}
+function zm(d){{sc=Math.min(Math.max(sc+d,0.5),3);render(pg);}}
+</script></body></html>""", height=760, scrolling=False)
 
-                    # Ações
-                    fa, fb, fc2 = st.columns(3)
-                    with fa:
-                        if st.button("Remover", key=f"desfav_{c['id']}",
-                                     use_container_width=True):
-                            st.session_state.favoritos = [
-                                f for f in st.session_state.favoritos
-                                if f['id'] != c['id']
-                            ]
-                            salvar_json()
-                            st.rerun()
-                    with fb:
-                        if st.button("AGENDAR", key=f"fav_age_{c['id']}",
-                                     type="primary", use_container_width=True):
-                            st.session_state.candidato_foco = c['id']
-                            st.rerun()
-                    with fc2:
-                        # Mover de volta para triagem se precisar
-                        if st.button("Triagem", key=f"fav_tri_{c['id']}",
-                                     use_container_width=True):
-                            if not any(x['id'] == c['id']
-                                       for x in st.session_state.cvs):
-                                st.session_state.cvs.append(c)
-                            st.session_state.favoritos = [
-                                f for f in st.session_state.favoritos
-                                if f['id'] != c['id']
-                            ]
-                            salvar_json()
-                            st.rerun()
+                    st.download_button(
+                        f"Baixar — {c['nome_arquivo']}",
+                        c['arquivo_bytes'],
+                        file_name=c['nome_arquivo'],
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key=f"dl_fav_{c['id']}")
 
-            for j in range(len(row), N):
-                cols[j].empty()
+            # ── 4 botões ──
             st.write("")
+            bv, bp, brem, bacc = st.columns(4)
+            with bv:
+                if st.button("← VOLTAR", key=f"fv_vol_{c['id']}", use_container_width=True):
+                    st.session_state.fav_idx = (idx_fav - 1) % n_fav
+                    st.rerun()
+            with bp:
+                if st.button("PULAR →", key=f"fv_pul_{c['id']}", use_container_width=True):
+                    st.session_state.fav_idx = (idx_fav + 1) % n_fav
+                    st.rerun()
+            with brem:
+                if st.button("REMOVER", key=f"fv_rem_{c['id']}", type="secondary",
+                             use_container_width=True):
+                    st.session_state.favoritos = [
+                        f for f in st.session_state.favoritos if f['id'] != c['id']
+                    ]
+                    st.session_state.fav_idx = 0
+                    salvar_json()
+                    st.rerun()
+            with bacc:
+                if st.button("AGENDAR", key=f"fv_age_{c['id']}", type="primary",
+                             use_container_width=True):
+                    st.session_state.candidato_foco = c['id']
+                    st.rerun()
 
 # ── ABA 10: BANCO ANTIGOS ─────────────────
 with abas[10]:
