@@ -60,40 +60,38 @@ MESES_NOMES = {
 st.set_page_config(
     page_title="HOVA | Seleção de Talentos",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto"
 )
 
-# ── Forçar sidebar sempre aberta via JavaScript ──
+# Sidebar: abre no desktop, recolhida no mobile
 st.markdown("""
 <script>
-(function forcarSidebar() {
-    function abrirSidebar() {
-        // Botão de reabrir quando está colapsada
-        var btnReabrir = document.querySelector(
-            'button[data-testid="collapsedControl"],' +
-            'button[aria-label="Open sidebar"],' +
-            'button[aria-label="Abrir barra lateral"],' +
-            '[data-testid="stSidebarCollapseButton"]'
-        );
-        if (btnReabrir) { btnReabrir.click(); }
-        
-        // Esconder botão de fechar dentro da sidebar
-        var btnsFechar = document.querySelectorAll(
-            'section[data-testid="stSidebar"] button,' +
-            'button[data-testid="stSidebarNavCollapseButton"]'
-        );
-        btnsFechar.forEach(function(b) {
-            var label = (b.getAttribute("aria-label") || "").toLowerCase();
-            if (label.includes("close") || label.includes("fechar") || label.includes("collapse")) {
+(function() {
+    function isMobile() { return window.innerWidth <= 768; }
+    function gerenciarSidebar() {
+        if (!isMobile()) {
+            // Desktop — forçar abertura
+            var btn = document.querySelector(
+                'button[data-testid="collapsedControl"],' +
+                'button[aria-label="Open sidebar"],' +
+                'button[aria-label="Abrir barra lateral"]'
+            );
+            if (btn) btn.click();
+        }
+        // Mobile e desktop: esconder botão de fechar
+        document.querySelectorAll(
+            '[data-testid="stSidebarCollapseButton"],' +
+            '[data-testid="stSidebarNavCollapseButton"]'
+        ).forEach(function(b) {
+            var l = (b.getAttribute("aria-label") || "").toLowerCase();
+            if (l.includes("close") || l.includes("fechar") || l.includes("collapse"))
                 b.style.display = "none";
-            }
         });
     }
-    // Rodar imediatamente e a cada 500ms para garantir
-    setTimeout(abrirSidebar, 100);
-    setTimeout(abrirSidebar, 500);
-    setTimeout(abrirSidebar, 1500);
-    setInterval(abrirSidebar, 3000);
+    setTimeout(gerenciarSidebar, 300);
+    setTimeout(gerenciarSidebar, 1000);
+    setInterval(gerenciarSidebar, 5000);
+    window.addEventListener('resize', gerenciarSidebar);
 })();
 </script>
 """, unsafe_allow_html=True)
@@ -144,14 +142,12 @@ section[data-testid="stSidebar"] button[aria-label*="collapse"],
 /* Botão de reabrir (fora da sidebar, quando colapsada) — mantemos visível */
 /* mas forçamos o estado via JS */
 
-/* Garantir que a sidebar nunca some */
-section[data-testid="stSidebar"][aria-expanded="false"] {
-    transform: none !important;
-    visibility: visible !important;
-    display: block !important;
-    position: relative !important;
-    width: 240px !important;
-    min-width: 240px !important;
+/* Sidebar no mobile — permite recolher normalmente */
+@media (max-width: 768px) {
+    section[data-testid="stSidebar"] {
+        min-width: unset !important;
+        max-width: unset !important;
+    }
 }
 
 /* Todos os textos da sidebar — branco */
