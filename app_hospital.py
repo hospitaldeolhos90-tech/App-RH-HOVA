@@ -772,7 +772,11 @@ def _serial(obj):
 # ──────────────────────────────────────────
 # PERSISTÊNCIA — SUPABASE
 # ──────────────────────────────────────────
-import urllib.request as _urllib_req
+try:
+    import requests as _requests
+    _REQUESTS_OK = True
+except ImportError:
+    _REQUESTS_OK = False
 
 def _sb_headers() -> dict:
     key = st.secrets["supabase"]["key"]
@@ -780,7 +784,6 @@ def _sb_headers() -> dict:
         "apikey":        key,
         "Authorization": f"Bearer {key}",
         "Content-Type":  "application/json",
-        "Prefer":        "return=minimal",
     }
 
 def _sb_url(path: str) -> str:
@@ -790,15 +793,14 @@ def _sb_url(path: str) -> str:
 def _sb_get() -> dict:
     """Lê o registro principal do Supabase."""
     try:
-        req = _urllib_req.Request(
+        r = _requests.get(
             _sb_url("hova_dados?id=eq.principal&select=dados"),
-            headers={k: v for k, v in _sb_headers().items()
-                     if k != "Prefer"},
-            method="GET"
+            headers=_sb_headers(),
+            timeout=15
         )
-        with _urllib_req.urlopen(req, timeout=10) as r:
-            rows = json.loads(r.read().decode())
-            return rows[0]["dados"] if rows else {}
+        r.raise_for_status()
+        rows = r.json()
+        return rows[0]["dados"] if rows else {}
     except Exception as e:
         st.warning(f"Supabase leitura: {e}")
         return {}
@@ -807,17 +809,19 @@ def _sb_set(dados: dict):
     """Grava/atualiza o registro principal no Supabase."""
     try:
         payload = json.dumps(
-            {"dados": dados, "updated_at": datetime.datetime.utcnow().isoformat()},
-            default=_serial, ensure_ascii=False
-        ).encode("utf-8")
-        req = _urllib_req.Request(
-            _sb_url("hova_dados?id=eq.principal"),
-            data=payload,
-            headers={**_sb_headers(), "Prefer": "resolution=merge-duplicates"},
-            method="PATCH"
+            {"dados": dados,
+             "updated_at": datetime.datetime.utcnow().isoformat()},
+            default=_serial,
+            ensure_ascii=False
         )
-        with _urllib_req.urlopen(req, timeout=15):
-            pass
+        r = _requests.patch(
+            _sb_url("hova_dados?id=eq.principal"),
+            headers={**_sb_headers(),
+                     "Prefer": "resolution=merge-duplicates"},
+            data=payload.encode("utf-8"),
+            timeout=20
+        )
+        r.raise_for_status()
     except Exception as e:
         st.warning(f"Supabase gravação: {e}")
 
