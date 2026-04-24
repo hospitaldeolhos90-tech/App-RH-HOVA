@@ -741,39 +741,67 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
     background: #FFFFFF; color: #9AA5B4;
 }
 
+
 /* ═══════════════════════════════════════
-   MOBILE RESPONSIVO
+   MOBILE — elementos exclusivos
 ═══════════════════════════════════════ */
+.mobile-header { display:none; }
+.mobile-chips  { display:none; }
+.mobile-bottom-nav { display:none; }
+.desktop-only  { display:block; }
+
+.mobile-stat { background:rgba(255,255,255,0.12); border-radius:8px; padding:5px 8px; text-align:center; min-width:52px; }
+.ms-n { display:block; color:#fff; font-size:16px; font-weight:700; line-height:1; }
+.ms-l { display:block; color:rgba(255,255,255,0.5); font-size:8px; letter-spacing:1px; margin-top:2px; }
+
+.chip { display:inline-block; padding:5px 14px; border-radius:20px; font-size:11px; font-weight:600; margin-right:6px; cursor:pointer; border:0.5px solid #E2E6EA; background:#F5F7FA; color:#4A5568; white-space:nowrap; }
+.chip.active { background:#004D40; color:#fff; border-color:#004D40; }
+
+.bnav-item { display:flex; flex-direction:column; align-items:center; gap:3px; padding:4px 10px; color:#9AA5B4; font-size:9px; font-weight:600; letter-spacing:0.5px; text-transform:uppercase; text-decoration:none; }
+.bnav-item.active { color:#004D40; }
+
 @media (max-width: 768px) {
-    .hero-card {
-        flex-direction: column !important;
-        padding: 20px 16px !important;
-        gap: 16px;
+    /* Mostrar mobile / esconder desktop */
+    .mobile-header     { display:flex !important; background:#003329; padding:12px 16px; border-radius:0 0 14px 14px; align-items:center; justify-content:space-between; margin-bottom:10px; position:sticky; top:0; z-index:100; box-shadow:0 2px 12px rgba(0,51,41,0.3); }
+    .mobile-chips      { display:flex !important; overflow-x:auto; white-space:nowrap; padding:8px 12px; background:#fff; border-bottom:0.5px solid #E2E6EA; margin-bottom:6px; scrollbar-width:none; }
+    .mobile-chips::-webkit-scrollbar { display:none; }
+    .mobile-bottom-nav { display:flex !important; position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:0.5px solid #E2E6EA; padding:8px 0 14px; z-index:200; justify-content:space-around; box-shadow:0 -2px 16px rgba(0,0,0,0.08); }
+    .desktop-only      { display:none !important; }
+
+    /* Padding p/ não sobrepor bottom nav */
+    .stApp { padding-bottom: 76px !important; }
+
+    /* Botão menu flutuante */
+    button[data-testid="collapsedControl"] {
+        display:flex !important; visibility:visible !important; opacity:1 !important;
+        pointer-events:auto !important; position:fixed !important;
+        bottom:80px !important; right:14px !important; top:auto !important; left:auto !important;
+        z-index:199 !important; background:#004D40 !important; color:#fff !important;
+        border-radius:50% !important; width:44px !important; height:44px !important;
+        border:none !important; box-shadow:0 4px 14px rgba(0,77,64,0.35) !important;
     }
-    .hero-titulo { font-size: 30px !important; letter-spacing: -1px; }
-    .hero-stats  { gap: 8px !important; flex-wrap: wrap; justify-content: center; }
-    .stat-box    { padding: 10px 14px !important; min-width: 60px !important; }
-    .stat-box .n { font-size: 20px !important; }
-    .card-cand   { padding: 24px 14px !important; }
-    .cand-nome   { font-size: 20px !important; }
-    .cv-resumo   { font-size: 12px !important; padding: 14px !important; }
-    .hova-card   { padding: 16px 8px 12px !important; }
-    .hova-card-nome { font-size: 11px !important; }
-    .hova-card-cargo-bar { font-size: 10px !important; padding: 5px 6px !important; }
-    .dossie-header { padding: 20px 14px !important; }
-    .form-sched  { padding: 18px 14px !important; }
-    div[data-testid="stButton"] button { height: 52px !important; font-size: 11px !important; }
-    div[data-testid="stTabs"] { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
-    div[data-testid="stTabs"] button[data-baseweb="tab"] {
-        padding: 12px 9px !important; font-size: 9.5px !important; white-space: nowrap;
-    }
-    section[data-testid="stSidebar"] { min-width: 200px !important; max-width: 240px !important; }
-    .notif { font-size: 12px !important; padding: 10px 12px !important; }
-    .avatar { width: 70px !important; height: 70px !important; font-size: 20px !important; }
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] { min-width:unset !important; max-width:unset !important; }
+
+    /* Componentes */
+    .card-cand   { padding:20px 12px !important; }
+    .cand-nome   { font-size:18px !important; }
+    .cv-resumo   { font-size:12px !important; padding:12px !important; }
+    .hova-card   { padding:14px 8px 10px !important; }
+    .hova-card-nome { font-size:11px !important; }
+    .hova-card-cargo-bar { font-size:10px !important; padding:5px 6px !important; }
+    .dossie-header { padding:18px 12px !important; }
+    .form-sched  { padding:16px 12px !important; }
+    .notif       { font-size:12px !important; padding:10px 12px !important; }
+    .avatar      { width:68px !important; height:68px !important; font-size:20px !important; }
+    div[data-testid="stButton"] button { height:52px !important; font-size:11px !important; }
+    div[data-testid="stTabs"] { overflow-x:auto !important; -webkit-overflow-scrolling:touch; }
+    div[data-testid="stTabs"] button[data-baseweb="tab"] { padding:12px 9px !important; font-size:9.5px !important; white-space:nowrap; }
 }
 @media (max-width: 480px) {
-    .hero-titulo { font-size: 24px !important; }
-    .cand-nome   { font-size: 17px !important; }
+    .cand-nome { font-size:16px !important; }
+    .ms-n      { font-size:14px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -1671,8 +1699,32 @@ n_ag   = len(st.session_state.aguardando_retorno)
 n_agd  = len(st.session_state.agendados)
 n_con  = len(st.session_state.contratados)
 
+# ── Header mobile (só aparece em telas <= 768px via CSS) ──
 st.markdown(f"""
-<div class="hero-card">
+<div class="mobile-header">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div style="width:34px;height:34px;border-radius:50%;background:#26A69A;
+                display:flex;align-items:center;justify-content:center;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <path d="M4 6h16M4 12h16M4 18h16" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div>
+      <div style="color:#fff;font-size:15px;font-weight:700;letter-spacing:0.5px;">HOVA</div>
+      <div style="color:rgba(255,255,255,0.5);font-size:9px;letter-spacing:2px;">GESTÃO DE TALENTOS</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:6px;">
+    <div class="mobile-stat"><span class="ms-n">{n_tri}</span><span class="ms-l">TRIAGEM</span></div>
+    <div class="mobile-stat"><span class="ms-n">{n_agd}</span><span class="ms-l">AGEND.</span></div>
+    <div class="mobile-stat"><span class="ms-n">{n_con}</span><span class="ms-l">CONTRAT.</span></div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ── Header desktop (escondido no mobile) ──
+st.markdown(f"""
+<div class="hero-card desktop-only">
   <div class="hero-left">
     <div class="hero-marca">Hospital de Olhos Vale do Aço</div>
     <div class="hero-titulo">Seletor de<span>Talentos</span></div>
@@ -1721,10 +1773,61 @@ if st.session_state.executar_sync:
     }
     st.rerun()
 
-st.write("")
+# ── Chips de filtro rápido (só mobile) ──
+st.markdown("""
+<div class="mobile-chips">
+  <span class="chip active">Todos</span>
+  <span class="chip">Triagem</span>
+  <span class="chip">Recepção</span>
+  <span class="chip">Tec. Enfermagem</span>
+  <span class="chip">Administrativo</span>
+  <span class="chip">Faturamento</span>
+  <span class="chip">Jovem Aprendiz</span>
+</div>
+""", unsafe_allow_html=True)
 
-# ──────────────────────────────────────────
-# BARRA DE PESQUISA
+# ── Bottom navigation (só mobile) ──
+st.markdown("""
+<div class="mobile-bottom-nav">
+  <a class="bnav-item active" href="#">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="#004D40" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="9" cy="7" r="4" stroke="#004D40" stroke-width="2"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="#004D40" stroke-width="2"/>
+    </svg>
+    Triagem
+  </a>
+  <a class="bnav-item" href="#">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <rect x="3" y="4" width="18" height="18" rx="2" stroke="#9AA5B4" stroke-width="2"/>
+      <path d="M16 2v4M8 2v4M3 10h18" stroke="#9AA5B4" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    Agendados
+  </a>
+  <a class="bnav-item" href="#">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke="#9AA5B4" stroke-width="2"/>
+    </svg>
+    Favoritos
+  </a>
+  <a class="bnav-item" href="#">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="#9AA5B4" stroke-width="2" stroke-linecap="round"/>
+      <circle cx="12" cy="7" r="4" stroke="#9AA5B4" stroke-width="2"/>
+    </svg>
+    Equipe
+  </a>
+  <a class="bnav-item" href="#">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="3" stroke="#9AA5B4" stroke-width="2"/>
+      <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" stroke="#9AA5B4" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    Menu
+  </a>
+</div>
+""", unsafe_allow_html=True)
+
+st.write("")
 # ──────────────────────────────────────────
 sc1, _ = st.columns([2, 1])
 with sc1:
