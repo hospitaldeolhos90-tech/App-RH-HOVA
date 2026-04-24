@@ -770,37 +770,30 @@ def _serial(obj):
     raise TypeError(f"Não serializável: {type(obj)}")
 
 # ──────────────────────────────────────────
-# PERSISTÊNCIA — SUPABASE
+# PERSISTÊNCIA — SUPABASE (cliente oficial)
 # ──────────────────────────────────────────
-try:
-    import requests as _requests
-    _REQUESTS_OK = True
-except ImportError:
-    _REQUESTS_OK = False
-
-def _sb_headers() -> dict:
-    key = st.secrets["supabase"]["key"]
-    return {
-        "apikey":        key,
-        "Authorization": f"Bearer {key}",
-        "Content-Type":  "application/json",
-    }
-
-def _sb_url(path: str) -> str:
-    base = st.secrets["supabase"]["url"].rstrip("/")
-    return f"{base}/rest/v1/{path}"
+@st.cache_resource
+def _get_supabase_client():
+    """Cria cliente Supabase uma única vez e reutiliza."""
+    try:
+        from supabase import create_client
+        url = st.secrets["supabase"]["url"].rstrip("/")
+        key = st.secrets["supabase"]["key"]
+        return create_client(url, key)
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Supabase: {e}")
+        return None
 
 def _sb_get() -> dict:
     """Lê o registro principal do Supabase."""
     try:
-        r = _requests.get(
-            _sb_url("hova_dados?id=eq.principal&select=dados"),
-            headers=_sb_headers(),
-            timeout=15
-        )
-        r.raise_for_status()
-        rows = r.json()
-        return rows[0]["dados"] if rows else {}
+        sb = _get_supabase_client()
+        if not sb:
+            return {}
+        res = sb.table("hova_dados").select("dados").eq("id", "principal").execute()
+        if res.data:
+            return res.data[0]["dados"] or {}
+        return {}
     except Exception as e:
         st.warning(f"Supabase leitura: {e}")
         return {}
@@ -808,20 +801,16 @@ def _sb_get() -> dict:
 def _sb_set(dados: dict):
     """Grava/atualiza o registro principal no Supabase."""
     try:
-        payload = json.dumps(
-            {"dados": dados,
-             "updated_at": datetime.datetime.utcnow().isoformat()},
-            default=_serial,
-            ensure_ascii=False
-        )
-        r = _requests.patch(
-            _sb_url("hova_dados?id=eq.principal"),
-            headers={**_sb_headers(),
-                     "Prefer": "resolution=merge-duplicates"},
-            data=payload.encode("utf-8"),
-            timeout=20
-        )
-        r.raise_for_status()
+        sb = _get_supabase_client()
+        if not sb:
+            return
+        payload_str = json.dumps(dados, default=_serial, ensure_ascii=False)
+        payload_obj = json.loads(payload_str)   # garante tipos JSON puros
+        sb.table("hova_dados").upsert({
+            "id":         "principal",
+            "dados":      payload_obj,
+            "updated_at": datetime.datetime.utcnow().isoformat(),
+        }).execute()
     except Exception as e:
         st.warning(f"Supabase gravação: {e}")
 
@@ -862,26 +851,20 @@ def _fix_datas(lista):
     return lista
 
 def carregar_json():
-    """
-    Carrega dados do Supabase.
-    Verifica updated_at para sincronizar múltiplos usuários sem recarregar sempre.
-    """
-    # Verificar se há versão mais nova no banco
+    """Carrega dados do Supabase. Verifica updated_at para sincronizar múltiplos usuários."""
     try:
-        req = _urllib_req.Request(
-            _sb_url("hova_dados?id=eq.principal&select=updated_at"),
-            headers={k: v for k, v in _sb_headers().items() if k != "Prefer"},
-            method="GET"
-        )
-        with _urllib_req.urlopen(req, timeout=8) as r:
-            rows = json.loads(r.read().decode())
-            remote_ts = rows[0]["updated_at"] if rows else ""
+        sb = _get_supabase_client()
+        if not sb:
+            st.session_state._carregado = True
+            return
+
+        # Verificar timestamp remoto
+        res_ts = sb.table("hova_dados").select("updated_at").eq("id","principal").execute()
+        remote_ts = res_ts.data[0]["updated_at"] if res_ts.data else ""
     except Exception:
         remote_ts = ""
 
     last_ts = st.session_state.get('_sb_ts', '')
-
-    # Pular se já carregou e banco não mudou
     if st.session_state.get('_carregado') and remote_ts == last_ts and last_ts:
         return
 
