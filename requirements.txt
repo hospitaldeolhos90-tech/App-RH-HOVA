@@ -1,4 +1,5 @@
 streamlit
+requests
 pdfplumber
 pymupdf
 docx2txt
