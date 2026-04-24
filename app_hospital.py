@@ -902,6 +902,7 @@ _def = {
     'perfil_foco': None,
     'nao_contratar_foco': None,
     'rejeitar_foco': None,
+    'editar_agendado': None,
     'pular_idx': {},
     'fav_idx': 0,
     'sync_msg': None, 'sync_logs': [],
@@ -2161,10 +2162,45 @@ with abas[6]:
                             }
                             time.sleep(1)
                             st.rerun()
+
+                elif st.session_state.get('editar_agendado') == c['id']:
+                    # ── Formulário de edição rápida ──
+                    st.caption("EDITAR DATA E HORÁRIO")
+                    nova_data = st.date_input(
+                        "Nova data:",
+                        value=c.get('data_entrevista') or datetime.date.today(),
+                        key=f"ed_data_{c['id']}")
+                    novo_hora = st.time_input(
+                        "Novo horário:",
+                        value=c.get('hora_entrevista') or datetime.time(9,0),
+                        key=f"ed_hora_{c['id']}")
+                    ea1, ea2 = st.columns(2)
+                    with ea1:
+                        if st.button("CANCELAR", key=f"ed_canc_{c['id']}",
+                                     type="secondary", use_container_width=True):
+                            st.session_state['editar_agendado'] = None
+                            st.rerun()
+                    with ea2:
+                        if st.button("SALVAR", key=f"ed_salv_{c['id']}",
+                                     type="primary", use_container_width=True):
+                            c['data_entrevista'] = nova_data
+                            c['hora_entrevista'] = novo_hora
+                            salvar_json()
+                            st.session_state['editar_agendado'] = None
+                            st.rerun()
+
                 else:
-                    if st.button("CONTRATAR", key=f"ct_{c['id']}", type="primary", use_container_width=True):
-                        st.session_state.contratar_foco = c['id']
-                        st.rerun()
+                    be1, be2 = st.columns(2)
+                    with be1:
+                        if st.button("EDITAR", key=f"ed_{c['id']}",
+                                     use_container_width=True):
+                            st.session_state['editar_agendado'] = c['id']
+                            st.rerun()
+                    with be2:
+                        if st.button("CONTRATAR", key=f"ct_{c['id']}",
+                                     type="primary", use_container_width=True):
+                            st.session_state.contratar_foco = c['id']
+                            st.rerun()
             st.markdown("</div>", unsafe_allow_html=True)
 
 # ── ABA 7: AGUARDANDO RETORNO ─────────────
