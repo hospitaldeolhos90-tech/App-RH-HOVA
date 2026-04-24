@@ -769,15 +769,60 @@ def _serial(obj):
     if isinstance(obj, bytes): return base64.b64encode(obj).decode('utf-8')
     raise TypeError(f"Não serializável: {type(obj)}")
 
-def _arquivo_path():
-    """Retorna o caminho absoluto do JSON — usa /tmp no Streamlit Cloud."""
-    # Streamlit Cloud: /tmp é persistente entre reruns mas não entre deploys
-    # Para persistência real entre deploys use st.secrets + banco externo
-    base = os.environ.get("HOVA_DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, ARQUIVO_MEMORIA)
+# ──────────────────────────────────────────
+# PERSISTÊNCIA — SUPABASE
+# ──────────────────────────────────────────
+import urllib.request as _urllib_req
+
+def _sb_headers() -> dict:
+    key = st.secrets["supabase"]["key"]
+    return {
+        "apikey":        key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=minimal",
+    }
+
+def _sb_url(path: str) -> str:
+    base = st.secrets["supabase"]["url"].rstrip("/")
+    return f"{base}/rest/v1/{path}"
+
+def _sb_get() -> dict:
+    """Lê o registro principal do Supabase."""
+    try:
+        req = _urllib_req.Request(
+            _sb_url("hova_dados?id=eq.principal&select=dados"),
+            headers={k: v for k, v in _sb_headers().items()
+                     if k != "Prefer"},
+            method="GET"
+        )
+        with _urllib_req.urlopen(req, timeout=10) as r:
+            rows = json.loads(r.read().decode())
+            return rows[0]["dados"] if rows else {}
+    except Exception as e:
+        st.warning(f"Supabase leitura: {e}")
+        return {}
+
+def _sb_set(dados: dict):
+    """Grava/atualiza o registro principal no Supabase."""
+    try:
+        payload = json.dumps(
+            {"dados": dados, "updated_at": datetime.datetime.utcnow().isoformat()},
+            default=_serial, ensure_ascii=False
+        ).encode("utf-8")
+        req = _urllib_req.Request(
+            _sb_url("hova_dados?id=eq.principal"),
+            data=payload,
+            headers={**_sb_headers(), "Prefer": "resolution=merge-duplicates"},
+            method="PATCH"
+        )
+        with _urllib_req.urlopen(req, timeout=15):
+            pass
+    except Exception as e:
+        st.warning(f"Supabase gravação: {e}")
 
 def salvar_json():
-    """Salva estado com write atômico (temp file + rename) para evitar corrupção."""
+    """Serializa o estado e salva no Supabase."""
     try:
         dados = {
             "aguardando":      st.session_state.aguardando_retorno,
@@ -786,25 +831,9 @@ def salvar_json():
             "ex_funcionarios": st.session_state.ex_funcionarios,
             "favoritos":       st.session_state.favoritos,
         }
-        caminho = _arquivo_path()
-        tmp     = caminho + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(dados, f, default=_serial, indent=2, ensure_ascii=False)
-        # Rename atômico — evita arquivo corrompido se cair no meio
-        os.replace(tmp, caminho)
+        _sb_set(dados)
     except Exception as e:
         st.warning(f"Aviso ao salvar: {e}")
-
-def _ler_json_disco() -> dict:
-    """Lê o JSON do disco sem tocar no session_state."""
-    try:
-        caminho = _arquivo_path()
-        if os.path.exists(caminho):
-            with open(caminho, "r", encoding="utf-8") as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {}
 
 def _fix_datas(lista):
     for c in lista:
@@ -830,20 +859,30 @@ def _fix_datas(lista):
 
 def carregar_json():
     """
-    Carrega o JSON do disco.
-    Chamado UMA vez por sessão (_carregado) + sempre que o disco for mais novo
-    que o último carregamento (para sincronizar múltiplos usuários).
+    Carrega dados do Supabase.
+    Verifica updated_at para sincronizar múltiplos usuários sem recarregar sempre.
     """
-    caminho  = _arquivo_path()
-    disk_mtime = os.path.getmtime(caminho) if os.path.exists(caminho) else 0
-    last_load  = st.session_state.get('_json_mtime', -1)
+    # Verificar se há versão mais nova no banco
+    try:
+        req = _urllib_req.Request(
+            _sb_url("hova_dados?id=eq.principal&select=updated_at"),
+            headers={k: v for k, v in _sb_headers().items() if k != "Prefer"},
+            method="GET"
+        )
+        with _urllib_req.urlopen(req, timeout=8) as r:
+            rows = json.loads(r.read().decode())
+            remote_ts = rows[0]["updated_at"] if rows else ""
+    except Exception:
+        remote_ts = ""
 
-    # Pular se já carregou e disco não mudou
-    if st.session_state.get('_carregado') and disk_mtime <= last_load:
+    last_ts = st.session_state.get('_sb_ts', '')
+
+    # Pular se já carregou e banco não mudou
+    if st.session_state.get('_carregado') and remote_ts == last_ts and last_ts:
         return
 
     try:
-        d = _ler_json_disco()
+        d = _sb_get()
         if d:
             st.session_state.aguardando_retorno = _fix_datas(d.get("aguardando",      []))
             st.session_state.agendados          = _fix_datas(d.get("agendados",       []))
@@ -857,7 +896,7 @@ def carregar_json():
                 for c in lst:
                     if c.get('email'): proc.add(c['email'].lower().strip())
             st.session_state._processados = proc
-            st.session_state._json_mtime  = disk_mtime
+            st.session_state._sb_ts       = remote_ts
     except Exception as e:
         st.warning(f"Aviso ao carregar: {e}")
     finally:
@@ -1596,6 +1635,8 @@ with st.sidebar:
         st.session_state.perfil_foco      = None
         st.session_state.pular_idx        = {}
         if os.path.exists(ARQUIVO_MEMORIA): os.remove(ARQUIVO_MEMORIA)
+        # Limpar também no Supabase
+        _sb_set({})
         st.success("Memoria zerada.")
         time.sleep(1)
         st.rerun()
