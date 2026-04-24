@@ -1,0 +1,4 @@
+streamlit
+pdfplumber
+pymupdf
+docx2txt
