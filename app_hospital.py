@@ -63,11 +63,12 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# Sidebar: abre no desktop, recolhida no mobile
+# Sidebar: abre no desktop, recolhida mas acessível no mobile
 st.markdown("""
 <script>
 (function() {
     function isMobile() { return window.innerWidth <= 768; }
+
     function gerenciarSidebar() {
         if (!isMobile()) {
             // Desktop — forçar abertura
@@ -77,17 +78,20 @@ st.markdown("""
                 'button[aria-label="Abrir barra lateral"]'
             );
             if (btn) btn.click();
+
+            // Desktop — esconder botão de fechar dentro da sidebar
+            document.querySelectorAll(
+                '[data-testid="stSidebarCollapseButton"],' +
+                '[data-testid="stSidebarNavCollapseButton"]'
+            ).forEach(function(b) {
+                var l = (b.getAttribute("aria-label") || "").toLowerCase();
+                if (l.includes("close") || l.includes("fechar") || l.includes("collapse"))
+                    b.style.display = "none";
+            });
         }
-        // Mobile e desktop: esconder botão de fechar
-        document.querySelectorAll(
-            '[data-testid="stSidebarCollapseButton"],' +
-            '[data-testid="stSidebarNavCollapseButton"]'
-        ).forEach(function(b) {
-            var l = (b.getAttribute("aria-label") || "").toLowerCase();
-            if (l.includes("close") || l.includes("fechar") || l.includes("collapse"))
-                b.style.display = "none";
-        });
+        // Mobile — NÃO esconder nenhum botão, deixar o usuário abrir/fechar livremente
     }
+
     setTimeout(gerenciarSidebar, 300);
     setTimeout(gerenciarSidebar, 1000);
     setInterval(gerenciarSidebar, 5000);
@@ -147,6 +151,24 @@ section[data-testid="stSidebar"] button[aria-label*="collapse"],
     section[data-testid="stSidebar"] {
         min-width: unset !important;
         max-width: unset !important;
+    }
+    /* Garantir que o botão de abrir sidebar fique visível no mobile */
+    button[data-testid="collapsedControl"] {
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        position: fixed !important;
+        top: 12px !important;
+        left: 8px !important;
+        z-index: 999 !important;
+        background: #004D40 !important;
+        color: #FFFFFF !important;
+        border-radius: 8px !important;
+        width: 40px !important;
+        height: 40px !important;
+        border: none !important;
+        box-shadow: 0 2px 8px rgba(0,77,64,0.3) !important;
     }
 }
 
