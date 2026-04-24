@@ -1773,58 +1773,111 @@ if st.session_state.executar_sync:
     }
     st.rerun()
 
-# ── Chips de filtro rápido (só mobile) ──
+# ── Navegação mobile funcional (só aparece em mobile via CSS) ──
 st.markdown("""
 <div class="mobile-chips">
-  <span class="chip active">Todos</span>
-  <span class="chip">Triagem</span>
+  <span class="chip active">Todos os meses</span>
+  <span class="chip">Triagem Geral</span>
   <span class="chip">Recepção</span>
   <span class="chip">Tec. Enfermagem</span>
   <span class="chip">Administrativo</span>
-  <span class="chip">Faturamento</span>
-  <span class="chip">Jovem Aprendiz</span>
 </div>
-""", unsafe_allow_html=True)
+<style>
+.mobile-nav-bar {
+    display: none;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    background: #fff;
+    border-top: 0.5px solid #E2E6EA;
+    z-index: 200;
+    box-shadow: 0 -2px 16px rgba(0,0,0,0.08);
+    padding: 0;
+}
+@media (max-width: 768px) {
+    .mobile-nav-bar { display: block !important; }
+    .stApp { padding-bottom: 76px !important; }
+}
+</style>
+<div class="mobile-nav-bar" id="mobileNav">
+  <div style="display:flex;justify-content:space-around;padding:8px 0 14px;">
+    <button onclick="navClick(0,'Triagem')" id="nb0"
+      style="flex:1;background:none;border:none;padding:6px 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:#004D40;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+        <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="currentColor" stroke-width="2"/>
+      </svg>
+      <span style="font-size:9px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Triagem</span>
+    </button>
+    <button onclick="navClick(1,'Agendados')" id="nb1"
+      style="flex:1;background:none;border:none;padding:6px 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:#9AA5B4;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/>
+        <path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span style="font-size:9px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Agendados</span>
+    </button>
+    <button onclick="navClick(2,'Favoritos')" id="nb2"
+      style="flex:1;background:none;border:none;padding:6px 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:#9AA5B4;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke="currentColor" stroke-width="2"/>
+      </svg>
+      <span style="font-size:9px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Favoritos</span>
+    </button>
+    <button onclick="navClick(3,'Equipe')" id="nb3"
+      style="flex:1;background:none;border:none;padding:6px 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:#9AA5B4;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+      </svg>
+      <span style="font-size:9px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Equipe</span>
+    </button>
+    <button onclick="abrirMenu()" id="nb4"
+      style="flex:1;background:none;border:none;padding:6px 4px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;color:#9AA5B4;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <span style="font-size:9px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase;">Menu</span>
+    </button>
+  </div>
+</div>
 
-# ── Bottom navigation (só mobile) ──
-st.markdown("""
-<div class="mobile-bottom-nav">
-  <a class="bnav-item active" href="#">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" stroke="#004D40" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="9" cy="7" r="4" stroke="#004D40" stroke-width="2"/>
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke="#004D40" stroke-width="2"/>
-    </svg>
-    Triagem
-  </a>
-  <a class="bnav-item" href="#">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="4" width="18" height="18" rx="2" stroke="#9AA5B4" stroke-width="2"/>
-      <path d="M16 2v4M8 2v4M3 10h18" stroke="#9AA5B4" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    Agendados
-  </a>
-  <a class="bnav-item" href="#">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" stroke="#9AA5B4" stroke-width="2"/>
-    </svg>
-    Favoritos
-  </a>
-  <a class="bnav-item" href="#">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="#9AA5B4" stroke-width="2" stroke-linecap="round"/>
-      <circle cx="12" cy="7" r="4" stroke="#9AA5B4" stroke-width="2"/>
-    </svg>
-    Equipe
-  </a>
-  <a class="bnav-item" href="#">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="3" stroke="#9AA5B4" stroke-width="2"/>
-      <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83" stroke="#9AA5B4" stroke-width="2" stroke-linecap="round"/>
-    </svg>
-    Menu
-  </a>
-</div>
+<script>
+// Mapa: índice do botão → texto da aba do Streamlit
+var tabMap = {
+  0: 'TRIAGEM GERAL',
+  1: 'AGENDADOS',
+  2: 'FAVORITOS',
+  3: 'CONTRATADOS'
+};
+
+function navClick(idx, label) {
+  // Atualizar visual dos botões
+  for (var i = 0; i < 4; i++) {
+    var btn = document.getElementById('nb' + i);
+    if (btn) btn.style.color = i === idx ? '#004D40' : '#9AA5B4';
+  }
+  // Encontrar e clicar na aba correspondente do Streamlit
+  var tabs = document.querySelectorAll('[data-baseweb="tab"]');
+  var alvo = tabMap[idx];
+  tabs.forEach(function(tab) {
+    if (tab.textContent.trim().toUpperCase().indexOf(alvo) >= 0) {
+      tab.click();
+    }
+  });
+  // Scroll para o topo
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+function abrirMenu() {
+  // Clicar no botão de abrir a sidebar
+  var btn = document.querySelector(
+    'button[data-testid="collapsedControl"], button[aria-label="Open sidebar"]'
+  );
+  if (btn) btn.click();
+  document.getElementById('nb4').style.color = '#004D40';
+}
+</script>
 """, unsafe_allow_html=True)
 
 st.write("")
