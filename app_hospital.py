@@ -40,6 +40,7 @@ SMTP_SERVER     = "email-ssl.com.br"
 SMTP_PORT       = 465
 ENDERECO_HOVA   = "Rua Ponte Nova, 185 - Centro, Ipatinga/MG"
 ARQUIVO_MEMORIA = "memoria_rh_hova.json"
+ARQUIVO_LOCK    = "memoria_rh_hova.lock"
 
 PALAVRAS_CV = [
     "curriculo", "currículo", "curriculum", "cv ", " cv", "vaga", "candidato",
@@ -721,6 +722,41 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
     border: 1.5px solid #E2E6EA;
     background: #FFFFFF; color: #9AA5B4;
 }
+
+/* ═══════════════════════════════════════
+   MOBILE RESPONSIVO
+═══════════════════════════════════════ */
+@media (max-width: 768px) {
+    .hero-card {
+        flex-direction: column !important;
+        padding: 20px 16px !important;
+        gap: 16px;
+    }
+    .hero-titulo { font-size: 30px !important; letter-spacing: -1px; }
+    .hero-stats  { gap: 8px !important; flex-wrap: wrap; justify-content: center; }
+    .stat-box    { padding: 10px 14px !important; min-width: 60px !important; }
+    .stat-box .n { font-size: 20px !important; }
+    .card-cand   { padding: 24px 14px !important; }
+    .cand-nome   { font-size: 20px !important; }
+    .cv-resumo   { font-size: 12px !important; padding: 14px !important; }
+    .hova-card   { padding: 16px 8px 12px !important; }
+    .hova-card-nome { font-size: 11px !important; }
+    .hova-card-cargo-bar { font-size: 10px !important; padding: 5px 6px !important; }
+    .dossie-header { padding: 20px 14px !important; }
+    .form-sched  { padding: 18px 14px !important; }
+    div[data-testid="stButton"] button { height: 52px !important; font-size: 11px !important; }
+    div[data-testid="stTabs"] { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+    div[data-testid="stTabs"] button[data-baseweb="tab"] {
+        padding: 12px 9px !important; font-size: 9.5px !important; white-space: nowrap;
+    }
+    section[data-testid="stSidebar"] { min-width: 200px !important; max-width: 240px !important; }
+    .notif { font-size: 12px !important; padding: 10px 12px !important; }
+    .avatar { width: 70px !important; height: 70px !important; font-size: 20px !important; }
+}
+@media (max-width: 480px) {
+    .hero-titulo { font-size: 24px !important; }
+    .cand-nome   { font-size: 17px !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -733,7 +769,15 @@ def _serial(obj):
     if isinstance(obj, bytes): return base64.b64encode(obj).decode('utf-8')
     raise TypeError(f"Não serializável: {type(obj)}")
 
+def _arquivo_path():
+    """Retorna o caminho absoluto do JSON — usa /tmp no Streamlit Cloud."""
+    # Streamlit Cloud: /tmp é persistente entre reruns mas não entre deploys
+    # Para persistência real entre deploys use st.secrets + banco externo
+    base = os.environ.get("HOVA_DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, ARQUIVO_MEMORIA)
+
 def salvar_json():
+    """Salva estado com write atômico (temp file + rename) para evitar corrupção."""
     try:
         dados = {
             "aguardando":      st.session_state.aguardando_retorno,
@@ -742,10 +786,25 @@ def salvar_json():
             "ex_funcionarios": st.session_state.ex_funcionarios,
             "favoritos":       st.session_state.favoritos,
         }
-        with open(ARQUIVO_MEMORIA, "w", encoding="utf-8") as f:
+        caminho = _arquivo_path()
+        tmp     = caminho + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(dados, f, default=_serial, indent=2, ensure_ascii=False)
+        # Rename atômico — evita arquivo corrompido se cair no meio
+        os.replace(tmp, caminho)
     except Exception as e:
         st.warning(f"Aviso ao salvar: {e}")
+
+def _ler_json_disco() -> dict:
+    """Lê o JSON do disco sem tocar no session_state."""
+    try:
+        caminho = _arquivo_path()
+        if os.path.exists(caminho):
+            with open(caminho, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
 
 def _fix_datas(lista):
     for c in lista:
@@ -758,12 +817,10 @@ def _fix_datas(lista):
             if k in c and isinstance(c[k], str):
                 try: c[k] = datetime.time.fromisoformat(c[k])
                 except: c[k] = None
-        # Restaurar bytes de foto e arquivo
         for k in ['arquivo_bytes','foto']:
             if k in c and c[k]:
                 try: c[k] = base64.b64decode(c[k])
                 except: c[k] = None
-        # Restaurar bytes dos documentos do dossiê (contratados)
         if 'documentos' in c and isinstance(c['documentos'], dict):
             for nome_doc, val in c['documentos'].items():
                 if val and isinstance(val, str):
@@ -772,17 +829,27 @@ def _fix_datas(lista):
     return lista
 
 def carregar_json():
-    if st.session_state.get('_carregado'): return
+    """
+    Carrega o JSON do disco.
+    Chamado UMA vez por sessão (_carregado) + sempre que o disco for mais novo
+    que o último carregamento (para sincronizar múltiplos usuários).
+    """
+    caminho  = _arquivo_path()
+    disk_mtime = os.path.getmtime(caminho) if os.path.exists(caminho) else 0
+    last_load  = st.session_state.get('_json_mtime', -1)
+
+    # Pular se já carregou e disco não mudou
+    if st.session_state.get('_carregado') and disk_mtime <= last_load:
+        return
+
     try:
-        if os.path.exists(ARQUIVO_MEMORIA):
-            with open(ARQUIVO_MEMORIA, "r", encoding="utf-8") as f:
-                d = json.load(f)
+        d = _ler_json_disco()
+        if d:
             st.session_state.aguardando_retorno = _fix_datas(d.get("aguardando",      []))
             st.session_state.agendados          = _fix_datas(d.get("agendados",       []))
             st.session_state.contratados        = _fix_datas(d.get("contratados",     []))
             st.session_state.ex_funcionarios    = _fix_datas(d.get("ex_funcionarios", []))
             st.session_state.favoritos          = _fix_datas(d.get("favoritos",       []))
-            # Constrói set de e-mails já em outras etapas (para dedup)
             proc = set()
             for lst in [st.session_state.aguardando_retorno,
                         st.session_state.agendados,
@@ -790,6 +857,7 @@ def carregar_json():
                 for c in lst:
                     if c.get('email'): proc.add(c['email'].lower().strip())
             st.session_state._processados = proc
+            st.session_state._json_mtime  = disk_mtime
     except Exception as e:
         st.warning(f"Aviso ao carregar: {e}")
     finally:
@@ -823,7 +891,17 @@ carregar_json()
 # ──────────────────────────────────────────
 # UTILITÁRIOS
 # ──────────────────────────────────────────
-def send_email(dest, assunto, corpo):
+def horario_disponivel(data: datetime.date, hora: datetime.time) -> bool:
+    """Retorna True se o slot data+hora não está ocupado em agendados."""
+    return not any(
+        a.get('data_entrevista') == data and a.get('hora_entrevista') == hora
+        for a in st.session_state.agendados
+    )
+
+def horarios_livres(data: datetime.date,
+                    opcoes: list[datetime.time]) -> list[datetime.time]:
+    """Retorna quais horários das opções ainda estão livres."""
+    return [h for h in opcoes if h and horario_disponivel(data, h)]
     try:
         m = MIMEText(corpo, 'plain', 'utf-8')
         m['Subject'] = assunto
@@ -1586,6 +1664,23 @@ for i, setor in enumerate(SETORES):
             h2  = ch2.time_input("", datetime.time(14,0),  key=f"h2_{c['id']}", label_visibility="collapsed")
             h3  = ch3.time_input("", datetime.time(16,0),  key=f"h3_{c['id']}", label_visibility="collapsed")
 
+            # ── Indicador visual de conflitos em tempo real ──
+            ocupados = [h for h in [h1,h2,h3] if not horario_disponivel(da, h)]
+            livres_agora = horarios_livres(da, [h1,h2,h3])
+            if ocupados and livres_agora:
+                hocs = ", ".join(h.strftime('%H:%M') for h in ocupados)
+                st.markdown(
+                    f"<div class='notif notif-warn' style='text-align:left;font-size:12px;'>"
+                    f"Atencao: {hocs} ja esta(o) ocupado(s) nessa data. "
+                    f"O candidato sera avisado automaticamente se escolher esses horarios.</div>",
+                    unsafe_allow_html=True)
+            elif not livres_agora and da:
+                st.markdown(
+                    "<div class='notif notif-warn' style='text-align:left;font-size:12px;'>"
+                    "Todos os 3 horarios escolhidos ja estao ocupados nessa data. "
+                    "Por favor, altere os horarios acima antes de enviar.</div>",
+                    unsafe_allow_html=True)
+
             msg_conv = (
                 f"Olá {ne},\n\n"
                 f"O Hospital de Olhos Vale do Aço analisou seu perfil e você foi selecionada(o) para a próxima fase do Processo Seletivo.\n\n"
@@ -1606,17 +1701,22 @@ for i, setor in enumerate(SETORES):
                     st.rerun()
             with benv:
                 if st.button("ENVIAR CONVITE", type="primary", key=f"conf_{c['id']}", use_container_width=True):
-                    with st.spinner("Enviando convite..."):
-                        ok = send_email(ee, "HOVA — Convite para Entrevista", msg_conv)
-                    if ok:
-                        c.update({'nome':ne,'email':ee,'data_entrevista':da,'opcao_1':h1,'opcao_2':h2,'opcao_3':h3})
-                        st.session_state.aguardando_retorno.append(c)
-                        st.session_state.cvs.remove(c)
-                        st.session_state.candidato_foco = None
-                        salvar_json()
-                        st.rerun()
+                    livres = horarios_livres(da, [h1, h2, h3])
+                    if not livres:
+                        st.error("Todos os 3 horários escolhidos já estão ocupados. Escolha novas opções antes de enviar.")
                     else:
-                        st.error("Falha no envio. Verifique as configurações de e-mail.")
+                        with st.spinner("Enviando convite..."):
+                            ok = send_email(ee, "HOVA — Convite para Entrevista", msg_conv)
+                        if ok:
+                            c.update({'nome':ne,'email':ee,'data_entrevista':da,
+                                      'opcao_1':h1,'opcao_2':h2,'opcao_3':h3})
+                            st.session_state.aguardando_retorno.append(c)
+                            st.session_state.cvs.remove(c)
+                            st.session_state.candidato_foco = None
+                            salvar_json()
+                            st.rerun()
+                        else:
+                            st.error("Falha no envio. Verifique as configurações de e-mail.")
             st.markdown("</div>", unsafe_allow_html=True)
 
         # ── CARD CANDIDATO ──
@@ -1971,27 +2071,60 @@ with abas[7]:
                     hmap = {"1":cand.get('opcao_1'),"2":cand.get('opcao_2'),"3":cand.get('opcao_3')}
                     hd   = hmap.get(op)
                     dd   = cand.get('data_entrevista')
-                    conf = hd and any(a.get('data_entrevista')==dd and a.get('hora_entrevista')==hd
-                                      for a in st.session_state.agendados)
+
+                    # Re-ler disco antes de checar conflito (outro usuário pode ter agendado)
+                    carregar_json()
+
+                    conf = hd and not horario_disponivel(dd, hd)
                     if conf:
-                        livres = [f"{n} - {h.strftime('%H:%M')}" for n,h in hmap.items()
-                                  if h and not any(a.get('data_entrevista')==dd and a.get('hora_entrevista')==h
-                                                   for a in st.session_state.agendados)]
-                        if livres:
-                            send_email(cand['email'],"HOVA — Atualizacao de Horário",
-                                       f"Olá {cand['nome']},\n\nO horário de {hd.strftime('%H:%M')} foi preenchido.\n\nOpções disponíveis:\n"+"\n".join(livres)+"\n\nResponda com o número.\n\nRH — HOVA")
-                            res_auto.append(('warn',f"Conflito para {cand['nome']} — novas opções enviadas."))
+                        livres_h = horarios_livres(dd, list(hmap.values()))
+                        if livres_h:
+                            # Montar lista numerada apenas com os livres
+                            livres_txt = "\n".join(
+                                f"[ {n} ] - {h.strftime('%H:%M')}"
+                                for n, h in hmap.items()
+                                if h in livres_h
+                            )
+                            send_email(
+                                cand['email'],
+                                "HOVA — Horário Preenchido, Escolha Outra Opção",
+                                f"Olá {cand['nome']},\n\n"
+                                f"Infelizmente o horário de {hd.strftime('%H:%M')} "
+                                f"acabou de ser confirmado por outro candidato.\n\n"
+                                f"Ainda temos disponibilidade para o dia "
+                                f"{dd.strftime('%d/%m/%Y')}. "
+                                f"Responda com o número da sua nova escolha:\n\n"
+                                f"{livres_txt}\n\n"
+                                f"Atenciosamente,\nEquipe de RH — HOVA"
+                            )
+                            res_auto.append(('warn',
+                                f"Conflito para {cand['nome']} — horário {hd.strftime('%H:%M')} "
+                                f"ocupado. Novas opções enviadas."))
                         else:
-                            send_email(cand['email'],"HOVA — Horários Preenchidos",
-                                       f"Olá {cand['nome']}, todos os horários foram preenchidos. Entraremos em contato.\n\nRH — HOVA")
+                            send_email(
+                                cand['email'],
+                                "HOVA — Precisamos Reagendar",
+                                f"Olá {cand['nome']},\n\n"
+                                f"Todos os horários disponíveis para o dia "
+                                f"{dd.strftime('%d/%m/%Y')} foram preenchidos.\n\n"
+                                f"Nossa equipe entrará em contato para oferecer "
+                                f"novas opções de data e horário.\n\n"
+                                f"Pedimos desculpas pelo transtorno!\n\n"
+                                f"Atenciosamente,\nEquipe de RH — HOVA"
+                            )
                             cand['alerta_lota'] = True
-                            res_auto.append(('err',f"Horários esgotados para {cand['nome']}."))
+                            res_auto.append(('err',
+                                f"ATENCAO: Todos horários de {dd.strftime('%d/%m/%Y')} "
+                                f"esgotaram para {cand['nome']}. "
+                                f"Reagende manualmente e ofereça nova data."))
                     else:
                         cand['hora_entrevista'] = hd
                         st.session_state.agendados.append(cand)
                         st.session_state.aguardando_retorno.remove(cand)
                         salvar_json()
-                        res_auto.append(('ok',f"{cand['nome']} agendado(a) para {hd.strftime('%H:%M') if hd else '—'}."))
+                        res_auto.append(('ok',
+                            f"{cand['nome']} agendado(a) para "
+                            f"{hd.strftime('%H:%M') if hd else '—'}."))
                     time.sleep(0.4)
                 conn.logout()
                 res_auto.append(('info','Varredura concluída.'))
