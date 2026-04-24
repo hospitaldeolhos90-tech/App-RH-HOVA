@@ -1,5 +1,5 @@
 streamlit
-requests
+supabase
 pdfplumber
 pymupdf
 docx2txt
