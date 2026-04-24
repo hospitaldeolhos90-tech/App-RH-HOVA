@@ -2145,6 +2145,10 @@ with abas[7]:
 
     if st.button("LER RESPOSTAS E AGENDAR AUTOMATICO", type="primary", use_container_width=True):
         res_auto = []
+        # IDs de mensagens já processadas nesta sessão (evita loop infinito)
+        if 'respostas_processadas' not in st.session_state:
+            st.session_state.respostas_processadas = set()
+
         with st.spinner("Verificando respostas de e-mail..."):
             try:
                 conn = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
@@ -2152,50 +2156,94 @@ with abas[7]:
                 conn.select("INBOX")
                 _, ids = conn.search(None, '(SUBJECT "Re: HOVA")')
                 for mid in (ids[0].split() or [])[-50:]:
+                    mid_str = mid.decode() if isinstance(mid, bytes) else str(mid)
+
+                    # ── Pular e-mails já processados nesta sessão ──
+                    if mid_str in st.session_state.respostas_processadas:
+                        continue
+
                     _, md = conn.fetch(mid,'(RFC822)')
-                    msg  = email.message_from_bytes(md[0][1])
-                    rem  = email.utils.parseaddr(msg.get('From',''))[1].lower()
+                    msg   = email.message_from_bytes(md[0][1])
+                    rem   = email.utils.parseaddr(msg.get('From',''))[1].lower()
                     corpo = ''
                     for pt in msg.walk():
-                        if pt.get_content_type()=="text/plain":
+                        if pt.get_content_type() == "text/plain":
                             try: corpo += pt.get_payload(decode=True).decode('utf-8',errors='ignore')
                             except: pass
-                    op = next((o for o in ["1","2","3"] if o in corpo.lower()), None)
-                    if not op: continue
-                    cand = next((c for c in st.session_state.aguardando_retorno if c['email']==rem), None)
-                    if not cand: continue
-                    hmap = {"1":cand.get('opcao_1'),"2":cand.get('opcao_2'),"3":cand.get('opcao_3')}
-                    hd   = hmap.get(op)
-                    dd   = cand.get('data_entrevista')
 
-                    # Re-ler disco antes de checar conflito (outro usuário pode ter agendado)
+                    # ── BUG FIX: extrair opção APENAS das primeiras 3 linhas não-vazias
+                    # (ignora o histórico quotado do e-mail anterior)
+                    linhas_novas = []
+                    for linha in corpo.splitlines():
+                        linha = linha.strip()
+                        # Linhas quotadas começam com ">" — ignorar
+                        if linha.startswith('>'):
+                            break
+                        if linha:
+                            linhas_novas.append(linha)
+                        if len(linhas_novas) >= 5:
+                            break
+
+                    texto_resposta = ' '.join(linhas_novas).lower()
+                    op = None
+                    # Buscar "1", "2" ou "3" como número isolado (não dentro de outra palavra)
+                    for opcao in ["1", "2", "3"]:
+                        import re as _re
+                        if _re.search(rf'\b{opcao}\b', texto_resposta):
+                            op = opcao
+                            break
+
+                    if not op:
+                        continue
+
+                    cand = next((c for c in st.session_state.aguardando_retorno
+                                 if c['email'] == rem), None)
+                    if not cand:
+                        continue
+
+                    # Marcar como processado ANTES de qualquer ação
+                    st.session_state.respostas_processadas.add(mid_str)
+
+                    hmap = {
+                        "1": cand.get('opcao_1'),
+                        "2": cand.get('opcao_2'),
+                        "3": cand.get('opcao_3'),
+                    }
+                    hd = hmap.get(op)
+                    dd = cand.get('data_entrevista')
+
+                    if not hd:
+                        res_auto.append(('warn', f"Opcao {op} invalida para {cand['nome']}."))
+                        continue
+
+                    # Re-ler disco antes de checar conflito
                     carregar_json()
 
-                    conf = hd and not horario_disponivel(dd, hd)
+                    conf = not horario_disponivel(dd, hd)
                     if conf:
-                        livres_h = horarios_livres(dd, list(hmap.values()))
+                        livres_h = horarios_livres(dd, [h for h in hmap.values() if h])
                         if livres_h:
-                            # Montar lista numerada apenas com os livres
                             livres_txt = "\n".join(
                                 f"[ {n} ] - {h.strftime('%H:%M')}"
                                 for n, h in hmap.items()
-                                if h in livres_h
+                                if h and h in livres_h
                             )
                             send_email(
                                 cand['email'],
-                                "HOVA — Horário Preenchido, Escolha Outra Opção",
+                                "Re: HOVA — Horário Preenchido, Escolha Outra Opção",
                                 f"Olá {cand['nome']},\n\n"
                                 f"Infelizmente o horário de {hd.strftime('%H:%M')} "
                                 f"acabou de ser confirmado por outro candidato.\n\n"
                                 f"Ainda temos disponibilidade para o dia "
                                 f"{dd.strftime('%d/%m/%Y')}. "
-                                f"Responda com o número da sua nova escolha:\n\n"
+                                f"Por favor, responda com o número da sua nova escolha:\n\n"
                                 f"{livres_txt}\n\n"
                                 f"Atenciosamente,\nEquipe de RH — HOVA"
                             )
                             res_auto.append(('warn',
-                                f"Conflito para {cand['nome']} — horário {hd.strftime('%H:%M')} "
-                                f"ocupado. Novas opções enviadas."))
+                                f"Conflito para {cand['nome']} — "
+                                f"{hd.strftime('%H:%M')} ocupado. "
+                                f"Novas opcoes enviadas."))
                         else:
                             send_email(
                                 cand['email'],
@@ -2204,15 +2252,15 @@ with abas[7]:
                                 f"Todos os horários disponíveis para o dia "
                                 f"{dd.strftime('%d/%m/%Y')} foram preenchidos.\n\n"
                                 f"Nossa equipe entrará em contato para oferecer "
-                                f"novas opções de data e horário.\n\n"
+                                f"novas opcões de data e horário.\n\n"
                                 f"Pedimos desculpas pelo transtorno!\n\n"
                                 f"Atenciosamente,\nEquipe de RH — HOVA"
                             )
                             cand['alerta_lota'] = True
                             res_auto.append(('err',
-                                f"ATENCAO: Todos horários de {dd.strftime('%d/%m/%Y')} "
-                                f"esgotaram para {cand['nome']}. "
-                                f"Reagende manualmente e ofereça nova data."))
+                                f"ATENCAO: Todos horários de "
+                                f"{dd.strftime('%d/%m/%Y')} esgotaram para "
+                                f"{cand['nome']}. Reagende manualmente."))
                     else:
                         cand['hora_entrevista'] = hd
                         st.session_state.agendados.append(cand)
@@ -2220,12 +2268,12 @@ with abas[7]:
                         salvar_json()
                         res_auto.append(('ok',
                             f"{cand['nome']} agendado(a) para "
-                            f"{hd.strftime('%H:%M') if hd else '—'}."))
-                    time.sleep(0.4)
+                            f"{hd.strftime('%H:%M')}."))
+                    time.sleep(0.3)
                 conn.logout()
-                res_auto.append(('info','Varredura concluída.'))
+                res_auto.append(('info', 'Varredura concluída.'))
             except Exception as e:
-                res_auto.append(('err',f"Erro: {e}"))
+                res_auto.append(('err', f"Erro: {e}"))
 
         for tp, tx in res_auto:
             css = "notif-ok" if tp=='ok' else ("notif-warn" if tp in ('warn','err') else "notif-info")
