@@ -1193,7 +1193,20 @@ def novo_manual(nome, email_c, tel, setor):
         "arquivo_bytes": None, "foto": None, "manual": True,
     }
 
-def email_admissao(nome, dl, di, hi):
+# E-mail de teste — troque por pessoal.expert@ntwdoctor.com.br quando confirmar
+EMAIL_CONTABILIDADE = "esterteixeiradepaula@gmail.com"
+
+# Assunto padrão para o candidato responder com documentos
+# O sistema vai buscar e-mails com esse prefixo para salvar automaticamente
+ASSUNTO_DOCS_PREFIX = "HOVA-DOCS"
+
+def _assunto_docs(nome: str, cand_id: str) -> str:
+    """Gera o assunto padronizado para o candidato responder com os documentos."""
+    nome_limpo = re.sub(r'[^A-Za-z0-9]', '', nome.replace(' ', '_'))
+    return f"{ASSUNTO_DOCS_PREFIX}-{nome_limpo}-{cand_id[:8]}"
+
+def email_admissao(nome, dl, di, hi, cand_id=""):
+    assunto_resposta = _assunto_docs(nome, cand_id)
     return f"""Prezada(o) {nome.title()}, bom dia!
 
 Aqui é a equipe de RH do Hospital de Olhos Vale do Aço.
@@ -1201,10 +1214,13 @@ Aqui é a equipe de RH do Hospital de Olhos Vale do Aço.
 Temos o prazer de informar que você foi selecionada(o) para integrar nossa equipe.
 Seja muito bem-vinda(o)!
 
-Para continuidade do processo de admissão, solicitamos o envio dos documentos abaixo
-até o dia {dl.strftime('%d/%m/%Y')}, em formato PDF (um arquivo por documento).
+Para continuidade do processo de admissão, precisamos que você nos envie os documentos
+listados abaixo até o dia {dl.strftime('%d/%m/%Y')}.
 
-Envie pelo WhatsApp para: +55 31 8860-0023 (PAULA)
+COMO ENVIAR:
+Responda este mesmo e-mail com os documentos em PDF anexados.
+Nomeie cada arquivo com o nome do documento. Ex: RG.pdf, CPF.pdf
+O assunto do e-mail ja esta correto — nao altere.
 
 Documentos necessários:
   - RG
@@ -1227,6 +1243,73 @@ Ficamos à disposição para qualquer dúvida.
 
 Atenciosamente,
 Equipe de RH — Hospital de Olhos Vale do Aço"""
+
+def send_email_admissao(dest: str, nome: str, dl, di, hi, cand_id: str) -> bool:
+    """Envia o e-mail de admissão com assunto padronizado para rastreamento."""
+    try:
+        m = MIMEText(email_admissao(nome, dl, di, hi, cand_id), 'plain', 'utf-8')
+        m['Subject'] = _assunto_docs(nome, cand_id)
+        m['From']    = EMAIL_CONTA
+        m['To']      = dest
+        m['Bcc']     = EMAIL_CONTA
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as s:
+            s.login(EMAIL_CONTA, SENHA_CONTA)
+            s.send_message(m)
+        return True
+    except:
+        return False
+
+def varrer_documentos_recebidos() -> list[dict]:
+    """
+    Varre a caixa de entrada buscando respostas dos contratados com PDFs.
+    Reconhece pelo assunto padronizado HOVA-DOCS-NOME-ID.
+    Retorna lista de {cand_id, nome_doc, bytes_pdf, email_remetente}.
+    """
+    encontrados = []
+    try:
+        conn = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
+        conn.login(EMAIL_CONTA, SENHA_CONTA)
+        conn.select("INBOX")
+        _, ids = conn.search(None, f'(SUBJECT "{ASSUNTO_DOCS_PREFIX}")')
+        for mid in (ids[0].split() or [])[-100:]:
+            try:
+                _, md = conn.fetch(mid, '(RFC822)')
+                msg   = email.message_from_bytes(md[0][1])
+                subj_raw = msg.get('Subject','')
+                try:
+                    dec, enc = decode_header(subj_raw)[0]
+                    subj = dec.decode(enc or 'utf-8', errors='replace') \
+                           if isinstance(dec, bytes) else str(dec)
+                except:
+                    subj = subj_raw
+
+                if ASSUNTO_DOCS_PREFIX not in subj:
+                    continue
+
+                # Extrair cand_id do assunto: HOVA-DOCS-NOME-XXXXXXXX
+                partes    = subj.split('-')
+                cand_id_8 = partes[-1].strip() if partes else ''
+
+                for part in msg.walk():
+                    fn = part.get_filename() or ''
+                    if fn.lower().endswith('.pdf'):
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            # Nome do doc = nome do arquivo sem extensão
+                            nome_doc = os.path.splitext(fn)[0].strip()
+                            encontrados.append({
+                                'cand_id_8':   cand_id_8,
+                                'nome_doc':    nome_doc,
+                                'bytes_pdf':   payload,
+                                'remetente':   email.utils.parseaddr(
+                                               msg.get('From',''))[1].lower(),
+                            })
+            except:
+                continue
+        conn.logout()
+    except:
+        pass
+    return encontrados
 
 # ──────────────────────────────────────────
 # BUSCA DE CURRICULOS
@@ -2036,7 +2119,7 @@ with abas[6]:
                     with cok:
                         if st.button("CONFIRMAR", key=f"cok_{c['id']}", type="primary", use_container_width=True):
                             with st.spinner("Enviando e-mail de admissão..."):
-                                ok = send_email(c['email'], "HOVA — Bem-vinda(o) a Nossa Equipe", email_admissao(c['nome'],dl,di,hi))
+                                ok = send_email_admissao(c['email'], c['nome'], dl, di, hi, c.get('id',''))
                             c.update({'data_inicio_contrato':di,'hora_inicio_contrato':hi,
                                       'telefone':tn,'email_admissao_enviado':ok})
                             st.session_state.contratados.append(c)
@@ -2284,7 +2367,7 @@ with abas[8]:
             msg = MIMEMultipart()
             msg['Subject'] = f"Admissão - {nome} - HOVA"
             msg['From']    = EMAIL_CONTA
-            msg['To']      = "pessoal.expert@ntwdoctor.com.br"
+            msg['To']      = EMAIL_CONTABILIDADE
             msg['Bcc']     = EMAIL_CONTA
             msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
 
@@ -2302,7 +2385,7 @@ with abas[8]:
             with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as s:
                 s.login(EMAIL_CONTA, SENHA_CONTA)
                 s.send_message(msg)
-            return True, f"E-mail enviado para pessoal.expert@ntwdoctor.com.br"
+            return True, f"E-mail enviado para {EMAIL_CONTABILIDADE} (TESTE)"
         except Exception as e:
             return False, f"Erro ao enviar: {e}"
 
@@ -2670,10 +2753,54 @@ with abas[8]:
 
                 # ── TAB 2: DOCUMENTOS ────────────────────────────
                 with tab_docs:
+                    # ── Botão de varredura automática ─────────────
                     st.markdown(
                         "<div style='font-size:10px;font-weight:800;color:#004D40;"
                         "letter-spacing:2px;text-transform:uppercase;"
-                        "margin-bottom:16px;'>Checklist de Documentos</div>",
+                        "margin-bottom:10px;'>Verificar Documentos Recebidos por E-mail</div>",
+                        unsafe_allow_html=True)
+
+                    cand_id_8 = func.get('id','')[:8]
+                    if st.button("VERIFICAR CAIXA DE ENTRADA",
+                                 key=f"scan_docs_{func['id']}",
+                                 use_container_width=True):
+                        with st.spinner("Varrendo e-mails em busca de documentos..."):
+                            encontrados = varrer_documentos_recebidos()
+
+                        # Filtrar os que são deste funcionário
+                        docs_func = [e for e in encontrados
+                                     if e['cand_id_8'] == cand_id_8
+                                     or e['remetente'] == func.get('email','').lower()]
+
+                        if docs_func:
+                            func.setdefault('documentos', {})
+                            func.setdefault('docs_check', {})
+                            novos_salvos = []
+                            for doc in docs_func:
+                                nd = doc['nome_doc']
+                                func['documentos'][nd] = doc['bytes_pdf']
+                                # Marcar no checklist se bater com algum item
+                                for item in func.get('docs_check', {}):
+                                    if item.lower() in nd.lower() or nd.lower() in item.lower():
+                                        func['docs_check'][item] = True
+                                novos_salvos.append(nd)
+                            salvar_json()
+                            st.markdown(
+                                f"<div class='notif notif-ok'>"
+                                f"{len(novos_salvos)} documento(s) recebido(s) e salvo(s) automaticamente: "
+                                f"{', '.join(novos_salvos)}</div>",
+                                unsafe_allow_html=True)
+                        else:
+                            st.markdown(
+                                "<div class='notif notif-info'>"
+                                "Nenhum documento novo encontrado. "
+                                "O candidato ainda nao respondeu o e-mail com os PDFs.</div>",
+                                unsafe_allow_html=True)
+
+                    st.markdown(
+                        "<div style='font-size:10px;font-weight:800;color:#004D40;"
+                        "letter-spacing:2px;text-transform:uppercase;"
+                        "margin:16px 0 10px;'>Checklist de Documentos</div>",
                         unsafe_allow_html=True)
 
                     DOCS_LISTA = [
@@ -2765,7 +2892,8 @@ with abas[8]:
                         "<div style='font-size:14px;font-weight:800;color:#004D40;"
                         "margin-bottom:4px;'>Encaminhar para Contabilidade</div>"
                         "<div style='font-size:12px;color:#4A5568;'>"
-                        "Envia e-mail para <b>pessoal.expert@ntwdoctor.com.br</b> "
+                        f"Envia e-mail para <b>{EMAIL_CONTABILIDADE}</b> "
+                        "(MODO TESTE — troque para pessoal.expert@ntwdoctor.com.br quando confirmar) "
                         "com os dados de admissão e todos os PDFs do dossiê anexados."
                         "</div></div>",
                         unsafe_allow_html=True)
