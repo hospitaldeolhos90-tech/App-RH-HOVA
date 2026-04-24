@@ -891,6 +891,19 @@ carregar_json()
 # ──────────────────────────────────────────
 # UTILITÁRIOS
 # ──────────────────────────────────────────
+def send_email(dest, assunto, corpo):
+    try:
+        m = MIMEText(corpo, 'plain', 'utf-8')
+        m['Subject'] = assunto
+        m['From']    = EMAIL_CONTA
+        m['To']      = dest
+        m['Bcc']     = EMAIL_CONTA
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as s:
+            s.login(EMAIL_CONTA, SENHA_CONTA)
+            s.send_message(m)
+        return True
+    except: return False
+
 def horario_disponivel(data: datetime.date, hora: datetime.time) -> bool:
     """Retorna True se o slot data+hora não está ocupado em agendados."""
     return not any(
