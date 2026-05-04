@@ -2304,7 +2304,15 @@ with abas[6]:
             with ca:
                 tel = c.get('telefone','')
                 if tel:
-                    mwa = f"Confirmando sua entrevista no Hospital de Olhos Vale do Aço em {df} às {hf}. Endereço: {ENDERECO_HOVA}. Pergunte por Josi ou Paula."
+                    mwa = (
+                        f"Olá! 😊\n\n"
+                        f"Aqui é a equipe de RH do *Hospital de Olhos Vale do Aço*.\n\n"
+                        f"Estamos te aguardando para a entrevista:\n"
+                        f"📅 *{df}* às *{hf}*\n"
+                        f"📍 {ENDERECO_HOVA}\n\n"
+                        f"Ao chegar, informe na recepção que é para a entrevista e pergunte por *Josi* ou *Paula*.\n\n"
+                        f"Qualquer dúvida, estamos à disposição. Até lá! 🤝"
+                    )
                     st.markdown(f'<a href="https://wa.me/{tel}?text={urllib.parse.quote(mwa)}" target="_blank" class="wa-btn">Confirmar via WhatsApp</a>', unsafe_allow_html=True)
 
                 if st.session_state.contratar_foco == c['id']:
