@@ -1659,6 +1659,48 @@ with st.sidebar:
             st.error("Nome e e-mail são obrigatórios.")
 
     st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.08);margin:18px 0;'>", unsafe_allow_html=True)
+
+    # ── Campo de Observações / Instruções ──
+    st.markdown("<span class='sb-label'>📋 Observações para o Sistema</span>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='font-size:10px;color:rgba(255,255,255,0.4);margin-bottom:8px;line-height:1.5;'>"
+        "Use este campo para anotar ajustes ou instruções. "
+        "Copie o conteúdo e envie ao desenvolvedor."
+        "</div>", unsafe_allow_html=True)
+
+    if 'obs_sistema' not in st.session_state:
+        st.session_state.obs_sistema = ""
+
+    obs_nova = st.text_area(
+        "",
+        value=st.session_state.obs_sistema,
+        height=120,
+        placeholder="Ex: Adicionar campo de CNH no cadastro, mudar cor do botão...",
+        key="obs_textarea",
+        label_visibility="collapsed"
+    )
+
+    col_obs1, col_obs2 = st.columns(2)
+    with col_obs1:
+        if st.button("SALVAR OBS", use_container_width=True, key="salvar_obs"):
+            st.session_state.obs_sistema = obs_nova
+            st.success("Salvo!")
+    with col_obs2:
+        if st.button("LIMPAR OBS", use_container_width=True, key="limpar_obs"):
+            st.session_state.obs_sistema = ""
+            st.rerun()
+
+    if st.session_state.obs_sistema:
+        st.markdown(
+            f"<div style='background:rgba(38,166,154,0.15);border:1px solid rgba(38,166,154,0.3);"
+            f"border-radius:8px;padding:10px 12px;margin-top:8px;"
+            f"font-size:11px;color:rgba(255,255,255,0.8);line-height:1.6;'>"
+            f"<b style='color:#26A69A;font-size:9px;letter-spacing:1.5px;'>ANOTADO:</b><br>"
+            f"{st.session_state.obs_sistema.replace(chr(10),'<br>')}"
+            f"</div>",
+            unsafe_allow_html=True)
+
+    st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.08);margin:18px 0;'>", unsafe_allow_html=True)
     if st.button("LIMPAR MEMORIA", use_container_width=True):
         for k in ['cvs','agendados','contratados','aguardando_retorno','cvs_antigos','ex_funcionarios','favoritos']:
             st.session_state[k] = []
