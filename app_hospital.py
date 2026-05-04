@@ -2534,7 +2534,7 @@ with abas[7]:
             cls    = "card-alerta" if alerta else "card-pendente"
             st.markdown(f"<div class='{cls}'>", unsafe_allow_html=True)
 
-            cc1, cc2, cc3 = st.columns([3, 1, 1])
+            cc1, cc2, cc3, cc4 = st.columns([3, 1, 1, 0.5])
             with cc1:
                 st.markdown(f"**{c['nome']}**")
                 st.markdown(
@@ -2557,6 +2557,12 @@ with abas[7]:
             with cc3:
                 if st.button("Nao Contratar", key=f"nc_{c['id']}", use_container_width=True):
                     st.session_state['nao_contratar_foco'] = c['id']
+                    st.rerun()
+            with cc4:
+                if st.button("🗑", key=f"del_ag_{c['id']}", use_container_width=True,
+                             help="Remover desta lista sem enviar e-mail"):
+                    st.session_state.aguardando_retorno.remove(c)
+                    salvar_json()
                     st.rerun()
 
             st.markdown("</div>", unsafe_allow_html=True)
