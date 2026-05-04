@@ -1643,20 +1643,24 @@ with st.sidebar:
     st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.08);margin:18px 0;'>", unsafe_allow_html=True)
     st.markdown("<span class='sb-label'>Cadastro manual</span>", unsafe_allow_html=True)
     with st.form("form_manual", clear_on_submit=True):
-        mn  = st.text_input("Nome completo", placeholder="Ex: Maria da Silva")
-        me  = st.text_input("E-mail", placeholder="candidato@email.com")
-        mt  = st.text_input("Telefone", placeholder="31999990000")
+        mn  = st.text_input("Nome completo *", placeholder="Ex: Maria da Silva")
+        me  = st.text_input("E-mail", placeholder="candidato@email.com (opcional)")
+        mt  = st.text_input("Telefone / WhatsApp", placeholder="31999990000")
         ms  = st.selectbox("Setor", ["TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
                                       "TECNICO E ENFERMAGEM","ADMINISTRATIVO",
                                       "FATURAMENTO","JOVEM APRENDIZ"])
         ok_manual = st.form_submit_button("CADASTRAR", use_container_width=True, type="primary")
     if ok_manual:
-        if mn and me:
-            st.session_state.cvs.append(novo_manual(mn, me, mt, ms))
-            salvar_json()
-            st.success(f"{mn.upper()} cadastrado.")
+        if mn:
+            if not me and not mt:
+                st.error("Informe pelo menos e-mail ou telefone.")
+            else:
+                st.session_state.cvs.append(novo_manual(mn, me, mt, ms))
+                salvar_json()
+                canal = "WhatsApp" if not me and mt else "e-mail"
+                st.success(f"{mn.upper()} cadastrado. Agendamento via {canal}.")
         else:
-            st.error("Nome e e-mail são obrigatórios.")
+            st.error("Nome é obrigatório.")
 
     st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.08);margin:18px 0;'>", unsafe_allow_html=True)
 
@@ -1987,15 +1991,31 @@ for i, setor in enumerate(SETORES):
 
         # ── FORMULÁRIO AGENDAMENTO ──
         if st.session_state.candidato_foco == c['id']:
+            tem_email = bool(c.get('email','').strip())
+            tem_tel   = bool(c.get('telefone','').strip())
+            via_wa    = not tem_email and tem_tel  # só WhatsApp quando não tem e-mail
+
             st.markdown("<div class='form-sched'>", unsafe_allow_html=True)
-            st.markdown("<div style='font-size:16px;font-weight:800;color:#004D40;margin-bottom:20px;'>AGENDAR ENTREVISTA</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='font-size:16px;font-weight:800;color:#004D40;margin-bottom:4px;'>AGENDAR ENTREVISTA</div>"
+                f"<div style='font-size:12px;color:#8A94A6;margin-bottom:20px;'>"
+                f"{'📱 Sem e-mail — convite será enviado via WhatsApp' if via_wa else '📧 Convite será enviado por e-mail'}"
+                f"</div>",
+                unsafe_allow_html=True)
+
             c1, c2 = st.columns(2)
             with c1:
                 st.caption("NOME DO CANDIDATO")
                 ne = st.text_input("", value=c['nome'], key=f"ne_{c['id']}", label_visibility="collapsed")
             with c2:
-                st.caption("E-MAIL")
-                ee = st.text_input("", value=c['email'], key=f"ee_{c['id']}", label_visibility="collapsed")
+                if via_wa:
+                    st.caption("TELEFONE / WHATSAPP")
+                    et = st.text_input("", value=c.get('telefone',''), key=f"et_{c['id']}", label_visibility="collapsed")
+                    ee = ""
+                else:
+                    st.caption("E-MAIL")
+                    ee = st.text_input("", value=c['email'], key=f"ee_{c['id']}", label_visibility="collapsed")
+                    et = c.get('telefone','')
 
             st.caption("DATA E HORARIOS (3 OPCOES)")
             cd, ch1, ch2, ch3 = st.columns(4)
@@ -2031,8 +2051,28 @@ for i, setor in enumerate(SETORES):
                 f"Ao chegar, informe na recepção que é referente à entrevista e pergunte por Josi ou Paula.\n\n"
                 f"Atenciosamente,\nEquipe de RH — Hospital de Olhos Vale do Aço"
             )
-            with st.expander("Visualizar e-mail que será enviado"):
-                st.code(msg_conv, language=None)
+
+            # Mensagem WhatsApp formatada (mais curta e com negrito)
+            msg_wa_conv = (
+                f"Olá! 😊\n\n"
+                f"Aqui é o RH do *Hospital de Olhos Vale do Aço*.\n\n"
+                f"Seu perfil foi selecionado para entrevista!\n\n"
+                f"📅 *{da.strftime('%d/%m/%Y')}*\n\n"
+                f"Escolha um horário respondendo com o número:\n"
+                f"*1* - {h1.strftime('%H:%M')}\n"
+                f"*2* - {h2.strftime('%H:%M')}\n"
+                f"*3* - {h3.strftime('%H:%M')}\n\n"
+                f"📍 {ENDERECO_HOVA}\n"
+                f"Pergunte por *Josi* ou *Paula*.\n\n"
+                f"Até lá! 🤝"
+            )
+
+            if via_wa:
+                with st.expander("Visualizar mensagem WhatsApp que será enviada"):
+                    st.code(msg_wa_conv, language=None)
+            else:
+                with st.expander("Visualizar e-mail que será enviado"):
+                    st.code(msg_conv, language=None)
 
             bc, benv = st.columns(2)
             with bc:
@@ -2040,23 +2080,49 @@ for i, setor in enumerate(SETORES):
                     st.session_state.candidato_foco = None
                     st.rerun()
             with benv:
-                if st.button("ENVIAR CONVITE", type="primary", key=f"conf_{c['id']}", use_container_width=True):
-                    livres = horarios_livres(da, [h1, h2, h3])
-                    if not livres:
-                        st.error("Todos os 3 horários escolhidos já estão ocupados. Escolha novas opções antes de enviar.")
-                    else:
-                        with st.spinner("Enviando convite..."):
-                            ok = send_email(ee, "HOVA — Convite para Entrevista", msg_conv)
-                        if ok:
-                            c.update({'nome':ne,'email':ee,'data_entrevista':da,
-                                      'opcao_1':h1,'opcao_2':h2,'opcao_3':h3})
+                if via_wa:
+                    # Botão que abre WhatsApp com a mensagem pré-preenchida
+                    tel_limpo = ''.join(filter(str.isdigit, et))
+                    if tel_limpo:
+                        url_wa = f"https://wa.me/55{tel_limpo}?text={urllib.parse.quote(msg_wa_conv)}"
+                        st.markdown(
+                            f'<a href="{url_wa}" target="_blank" class="wa-btn" '
+                            f'style="display:block;text-align:center;height:48px;line-height:48px;'
+                            f'border-radius:9px;font-size:11px;font-weight:700;letter-spacing:1px;">'
+                            f'ENVIAR VIA WHATSAPP</a>',
+                            unsafe_allow_html=True)
+                        # Botão para confirmar que enviou e mover para aguardando
+                        if st.button("CONFIRMAR ENVIO ✓", key=f"conf_wa_{c['id']}",
+                                     use_container_width=True):
+                            c.update({'nome':ne,'telefone':tel_limpo,
+                                      'data_entrevista':da,
+                                      'opcao_1':h1,'opcao_2':h2,'opcao_3':h3,
+                                      'canal':'whatsapp'})
                             st.session_state.aguardando_retorno.append(c)
                             st.session_state.cvs.remove(c)
                             st.session_state.candidato_foco = None
                             salvar_json()
                             st.rerun()
+                    else:
+                        st.error("Informe o telefone para enviar via WhatsApp.")
+                else:
+                    if st.button("ENVIAR CONVITE", type="primary", key=f"conf_{c['id']}", use_container_width=True):
+                        livres = horarios_livres(da, [h1, h2, h3])
+                        if not livres:
+                            st.error("Todos os 3 horários escolhidos já estão ocupados. Escolha novas opções antes de enviar.")
                         else:
-                            st.error("Falha no envio. Verifique as configurações de e-mail.")
+                            with st.spinner("Enviando convite..."):
+                                ok = send_email(ee, "HOVA — Convite para Entrevista", msg_conv)
+                            if ok:
+                                c.update({'nome':ne,'email':ee,'data_entrevista':da,
+                                          'opcao_1':h1,'opcao_2':h2,'opcao_3':h3})
+                                st.session_state.aguardando_retorno.append(c)
+                                st.session_state.cvs.remove(c)
+                                st.session_state.candidato_foco = None
+                                salvar_json()
+                                st.rerun()
+                            else:
+                                st.error("Falha no envio. Verifique as configurações de e-mail.")
             st.markdown("</div>", unsafe_allow_html=True)
 
         # ── CARD CANDIDATO ──
@@ -2357,34 +2423,86 @@ with abas[6]:
                     st.markdown(f'<a href="https://wa.me/{tel}?text={urllib.parse.quote(mwa)}" target="_blank" class="wa-btn">Confirmar via WhatsApp</a>', unsafe_allow_html=True)
 
                 if st.session_state.contratar_foco == c['id']:
+                    tem_email_c = bool(c.get('email','').strip())
                     st.caption("DADOS DE ADMISSÃO")
                     cdl, cdi = st.columns(2)
                     dl = cdl.date_input("Prazo documentos:", key=f"dl_{c['id']}")
                     di = cdi.date_input("Data de início:", key=f"di_{c['id']}")
                     hi = st.time_input("Horário de entrada:", datetime.time(8,0), key=f"hi_{c['id']}")
                     tn = st.text_input("WhatsApp (só números):", value=tel, key=f"wa_{c['id']}")
+
+                    if not tem_email_c:
+                        st.markdown(
+                            "<div class='notif notif-info' style='font-size:12px;text-align:left;'>"
+                            "📱 Sem e-mail — as instruções de documentos serão enviadas via WhatsApp.</div>",
+                            unsafe_allow_html=True)
+
+                        # Mensagem WhatsApp de admissão/documentos
+                        msg_adm_wa = (
+                            f"Olá! 😊\n\n"
+                            f"Aqui é o RH do *Hospital de Olhos Vale do Aço*.\n\n"
+                            f"Temos o prazer de informar que você foi *selecionado(a)* para integrar nossa equipe! 🎉\n\n"
+                            f"Seu início será em *{di.strftime('%d/%m/%Y')}* às *{hi.strftime('%H:%M')}*.\n\n"
+                            f"Para a admissão, precisamos que você envie os documentos abaixo até *{dl.strftime('%d/%m/%Y')}* "
+                            f"pelo e-mail: *rh@holhosvaledoaco.com.br*\n\n"
+                            f"📋 *Documentos necessários:*\n"
+                            f"• RG\n• CPF\n• Comprovante de residência\n• Cartão do PIS\n"
+                            f"• Diploma (se houver)\n• Cartão de vacinação\n"
+                            f"• Certidões (casamento/filhos, se houver)\n\n"
+                            f"A foto 3x4 entregar presencialmente.\n\n"
+                            f"Qualquer dúvida, estamos à disposição! 🤝\n"
+                            f"— Equipe de RH — HOVA"
+                        )
+
                     cx, cok = st.columns(2)
                     with cx:
                         if st.button("CANCELAR", key=f"cx_{c['id']}", type="secondary", use_container_width=True):
                             st.session_state.contratar_foco = None
                             st.rerun()
                     with cok:
-                        if st.button("CONFIRMAR", key=f"cok_{c['id']}", type="primary", use_container_width=True):
-                            with st.spinner("Enviando e-mail de admissão..."):
-                                ok = send_email_admissao(c['email'], c['nome'], dl, di, hi, c.get('id',''))
-                            c.update({'data_inicio_contrato':di,'hora_inicio_contrato':hi,
-                                      'telefone':tn,'email_admissao_enviado':ok})
-                            st.session_state.contratados.append(c)
-                            st.session_state.agendados.remove(c)
-                            st.session_state.contratar_foco = None
-                            salvar_json()
-                            st.session_state.sync_msg = {
-                                'tipo': 'ok' if ok else 'warn',
-                                'texto': f"{c['nome']} contratado(a). E-mail de admissão enviado." if ok
-                                         else f"{c['nome']} movido para Contratados. E-mail pendente."
-                            }
-                            time.sleep(1)
-                            st.rerun()
+                        if tem_email_c:
+                            if st.button("CONFIRMAR", key=f"cok_{c['id']}", type="primary", use_container_width=True):
+                                with st.spinner("Enviando e-mail de admissão..."):
+                                    ok = send_email_admissao(c['email'], c['nome'], dl, di, hi, c.get('id',''))
+                                c.update({'data_inicio_contrato':di,'hora_inicio_contrato':hi,
+                                          'telefone':tn,'email_admissao_enviado':ok})
+                                st.session_state.contratados.append(c)
+                                st.session_state.agendados.remove(c)
+                                st.session_state.contratar_foco = None
+                                salvar_json()
+                                st.session_state.sync_msg = {
+                                    'tipo': 'ok' if ok else 'warn',
+                                    'texto': f"{c['nome']} contratado(a). E-mail de admissão enviado." if ok
+                                             else f"{c['nome']} movido para Contratados. E-mail pendente."
+                                }
+                                time.sleep(1)
+                                st.rerun()
+                        else:
+                            # Sem e-mail — abrir WhatsApp com instruções
+                            tel_limpo = ''.join(filter(str.isdigit, tn))
+                            if tel_limpo:
+                                url_adm_wa = f"https://wa.me/55{tel_limpo}?text={urllib.parse.quote(msg_adm_wa)}"
+                                st.markdown(
+                                    f'<a href="{url_adm_wa}" target="_blank" class="wa-btn" '
+                                    f'style="display:block;text-align:center;height:48px;line-height:48px;'
+                                    f'border-radius:9px;font-size:11px;font-weight:700;letter-spacing:1px;">'
+                                    f'ENVIAR VIA WHATSAPP</a>',
+                                    unsafe_allow_html=True)
+                            if st.button("CONFIRMAR CONTRATAÇÃO ✓", key=f"cok_{c['id']}",
+                                         type="primary", use_container_width=True):
+                                c.update({'data_inicio_contrato':di,'hora_inicio_contrato':hi,
+                                          'telefone':''.join(filter(str.isdigit,tn)),
+                                          'email_admissao_enviado':False})
+                                st.session_state.contratados.append(c)
+                                st.session_state.agendados.remove(c)
+                                st.session_state.contratar_foco = None
+                                salvar_json()
+                                st.session_state.sync_msg = {
+                                    'tipo':'ok',
+                                    'texto':f"{c['nome']} contratado(a). Instruções enviadas via WhatsApp."
+                                }
+                                time.sleep(1)
+                                st.rerun()
 
                 elif st.session_state.get('editar_agendado') == c['id']:
                     # ── Formulário de edição rápida ──
