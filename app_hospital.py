@@ -48,6 +48,62 @@ PALAVRAS_CV = [
     "recepcionista", "enfermagem", "faturamento", "administrativo", "aprendiz"
 ]
 
+# ── Critérios de Triagem Inteligente ──────
+# Cidades com alto custo de VT (>30km de Ipatinga)
+CIDADES_LONGE = [
+    "belo horizonte","contagem","betim","governador valadares",
+    "caratinga","manhuaçu","manhuacu","ponte nova","ubá","uba",
+    "viçosa","vicosa","muriaé","muriae","juiz de fora",
+    "valadares","rio de janeiro","são paulo","sao paulo",
+    "vitória","vitoria","brasília","brasilia"
+]
+
+# Cidades próximas (VT viável)
+CIDADES_PERTO = [
+    "ipatinga","coronel fabriciano","timóteo","timoteo",
+    "santana do paraíso","santana do paraiso","cel. fabriciano"
+]
+
+# Vagas abertas no momento — edite conforme o post divulgado
+VAGAS_ABERTAS = [
+    "RECEPCAO E ATENDIMENTO",
+    "TECNICO E ENFERMAGEM",
+    "ADMINISTRATIVO",
+    "FATURAMENTO",
+    "JOVEM APRENDIZ",
+    "TRIAGEM GERAL",
+]
+
+def detectar_primeiro_emprego(texto: str) -> bool:
+    """Retorna True se o currículo indica candidato sem experiência."""
+    if not texto: return False
+    tl = texto.lower()
+    sem_exp = [
+        "primeiro emprego","sem experiência","sem experiencia",
+        "nenhuma experiência","nenhuma experiencia",
+        "não possuo experiência","nao possuo experiencia",
+        "estudante","recém formado","recem formado","recém-formado"
+    ]
+    tem_exp = [
+        "empresa","cargo","período","periodo","experiência profissional",
+        "experiencia profissional","histórico profissional","atuação"
+    ]
+    # Se tem palavras de sem-exp OU não tem nenhuma seção de experiência
+    if any(p in tl for p in sem_exp): return True
+    if not any(p in tl for p in tem_exp): return True
+    return False
+
+def detectar_cidade_longe(texto: str, cidade: str) -> tuple[bool, str]:
+    """Retorna (True, nome_cidade) se candidato mora longe."""
+    t = f"{texto} {cidade}".lower()
+    for c in CIDADES_LONGE:
+        if c in t: return True, c.title()
+    return False, ""
+
+def detectar_cidade_perto(texto: str, cidade: str) -> bool:
+    t = f"{texto} {cidade}".lower()
+    return any(c in t for c in CIDADES_PERTO)
+
 MESES_NOMES = {
     1:"Janeiro", 2:"Fevereiro", 3:"Marco", 4:"Abril",
     5:"Maio",    6:"Junho",     7:"Julho", 8:"Agosto",
@@ -1719,6 +1775,14 @@ def buscar_curriculos(limite):
                     "preview":resumo(txt),
                     "setor":setor, "nome_arquivo":fn,
                     "arquivo_bytes":payload, "foto":foto, "manual":False,
+                    # ── Triagem inteligente ──
+                    "primeiro_emprego": detectar_primeiro_emprego(txt),
+                    "cidade_longe":     detectar_cidade_longe(txt, cidade)[0],
+                    "cidade_longe_nome":detectar_cidade_longe(txt, cidade)[1],
+                    "motivo_mudanca":   "",   # preenchido ao redirecionar setor
+                    "motivo_rejeicao":  "",   # preenchido ao rejeitar
+                    "obs_triagem":      "",   # observações livres
+                    "duvida_enviada":   False,
                 }
 
                 st.session_state.cvs.append(candidato)
@@ -2289,18 +2353,25 @@ for i, setor in enumerate(SETORES):
             dat_b    = f"<span class='tag tag-azul'>{c['data']}</span>"
             tags_b   = "".join(f"<span class='tag tag-verde'>{t}</span>" for t in c.get('tags',[]))
 
-            # Estrela de favorito — no canto superior direito do card
-            ja_fav   = any(f['id'] == c['id'] for f in st.session_state.favoritos)
-            estrela  = "★" if ja_fav else "☆"
-            cor_est  = "#F59E0B" if ja_fav else "#CBD5E0"
-            tip_est  = "Remover dos favoritos" if ja_fav else "Adicionar aos favoritos"
+            # Tags de triagem inteligente
+            primeiro_emp = c.get('primeiro_emprego', detectar_primeiro_emprego(c.get('preview','')))
+            cidade_longe, cidade_longe_nome = detectar_cidade_longe(c.get('preview',''), c.get('cidade',''))
+            if primeiro_emp:
+                tags_b += "<span class='tag' style='background:#FFF3CD;color:#856404;border:1px solid #FFEAA7;'>👶 Primeiro Emprego</span>"
+            if cidade_longe:
+                tags_b += f"<span class='tag' style='background:#FFE4E4;color:#9B2C2C;border:1px solid #FEB2B2;'>📍 VT Alto — {cidade_longe_nome}</span>"
+            if c.get('obs_triagem'):
+                tags_b += f"<span class='tag' style='background:#E8F5F2;color:#004D40;border:1px solid #B2DFDB;'>📝 Com obs.</span>"
+
+            # Estrela de favorito
+            ja_fav  = any(f['id'] == c['id'] for f in st.session_state.favoritos)
+            estrela = "★" if ja_fav else "☆"
+            cor_est = "#F59E0B" if ja_fav else "#CBD5E0"
 
             st.markdown(
                 f"<div class='card-cand' style='position:relative;'>"
-                f"<div title='{tip_est}' id='star_{c['id']}'"
-                f" style='position:absolute;top:16px;right:20px;"
-                f"font-size:26px;color:{cor_est};cursor:pointer;"
-                f"line-height:1;user-select:none;'>{estrela}</div>"
+                f"<div title='Favoritar' style='position:absolute;top:16px;right:20px;"
+                f"font-size:26px;color:{cor_est};line-height:1;user-select:none;'>{estrela}</div>"
                 f"{av}"
                 f"<div class='cand-nome'>{c['nome']} {manual_b}</div>"
                 f"<div style='margin:8px 0;'>{cid_b} {dat_b}</div>"
@@ -2310,6 +2381,103 @@ for i, setor in enumerate(SETORES):
                 f"<div class='cv-resumo'>{c['preview']}</div></div>",
                 unsafe_allow_html=True
             )
+
+            # ── Alertas de triagem ─────────────────────────────
+            if primeiro_emp and setor != "JOVEM APRENDIZ":
+                st.markdown(
+                    "<div class='notif notif-warn' style='text-align:left;'>"
+                    "⚠️ <b>Sem experiência detectada.</b> Este candidato pode ser de Primeiro Emprego. "
+                    "Só avance se houver vaga para Jovem Aprendiz aberta no momento.</div>",
+                    unsafe_allow_html=True)
+
+            if cidade_longe:
+                st.markdown(
+                    f"<div class='notif' style='background:#FFF5F5;border:1px solid #FEB2B2;"
+                    f"color:#9B2C2C;text-align:left;'>"
+                    f"🚌 <b>Atenção ao VT:</b> Candidato parece morar em "
+                    f"<b>{cidade_longe_nome}</b>, que pode ter custo alto de vale-transporte. "
+                    f"Verifique antes de avançar.</div>",
+                    unsafe_allow_html=True)
+
+            # ── Observações de triagem ─────────────────────────
+            with st.expander("📝 Observações / Anotações"):
+                obs_tri = st.text_area(
+                    "", value=c.get('obs_triagem',''),
+                    height=80, key=f"obs_tri_{c['id']}",
+                    placeholder="Anote qualquer observação: dúvidas, pontos de atenção, histórico de contato...",
+                    label_visibility="collapsed")
+                if st.button("Salvar observação", key=f"salv_obs_tri_{c['id']}"):
+                    c['obs_triagem'] = obs_tri
+                    salvar_json()
+                    st.success("Observação salva.")
+                    st.rerun()
+
+            # ── Redirecionar para outro setor ──────────────────
+            with st.expander("🔄 Redirecionar para outro setor"):
+                st.markdown(
+                    "<div style='font-size:12px;color:#4A5568;margin-bottom:8px;'>"
+                    "Use quando o candidato se candidatou para uma vaga mas se encaixa melhor em outra.</div>",
+                    unsafe_allow_html=True)
+                novo_setor_op = st.selectbox(
+                    "Novo setor:", SETORES,
+                    index=SETORES.index(c['setor']) if c['setor'] in SETORES else 0,
+                    key=f"novo_setor_{c['id']}")
+                motivo_mud = st.text_input(
+                    "Motivo da mudança:",
+                    placeholder="Ex: Candidato tem perfil mais adequado para Recepção",
+                    key=f"motivo_mud_{c['id']}")
+                if st.button("CONFIRMAR REDIRECIONAMENTO", key=f"redir_{c['id']}",
+                             use_container_width=True):
+                    if motivo_mud.strip():
+                        setor_antigo = c['setor']
+                        c['setor'] = novo_setor_op
+                        c['motivo_mudanca'] = f"{setor_antigo} → {novo_setor_op}: {motivo_mud}"
+                        salvar_json()
+                        st.success(f"Redirecionado para {novo_setor_op}.")
+                        st.rerun()
+                    else:
+                        st.warning("Informe o motivo da mudança antes de confirmar.")
+
+            # ── Mensagem de dúvida ─────────────────────────────
+            with st.expander("❓ Tirar dúvida com o candidato"):
+                st.markdown(
+                    "<div style='font-size:12px;color:#4A5568;margin-bottom:8px;'>"
+                    "Use quando precisar de informação antes de avançar (ex: mora longe, vaga pretendida).</div>",
+                    unsafe_allow_html=True)
+
+                duvidas_prontas = {
+                    "Cidade/localização": f"Olá! 😊 Aqui é o RH do *Hospital de Olhos Vale do Aço*. Estamos analisando seu currículo e gostaríamos de saber: você reside atualmente em qual cidade?",
+                    "Vaga pretendida":    f"Olá! 😊 Aqui é o RH do *Hospital de Olhos Vale do Aço*. Vimos seu currículo com interesse! Para qual vaga você está se candidatando?",
+                    "Disponibilidade":    f"Olá! 😊 Aqui é o RH do *Hospital de Olhos Vale do Aço*. Qual é a sua disponibilidade de horário? Você teria disponibilidade para trabalhar em escala?",
+                    "Personalizada":      "",
+                }
+                tipo_duvida = st.selectbox("Dúvida:", list(duvidas_prontas.keys()),
+                                            key=f"tipo_duvida_{c['id']}")
+                msg_duvida = st.text_area(
+                    "Mensagem:",
+                    value=duvidas_prontas[tipo_duvida],
+                    height=100, key=f"msg_duvida_{c['id']}")
+
+                tel_d = c.get('telefone','')
+                email_d = c.get('email','')
+                dd1, dd2 = st.columns(2)
+                with dd1:
+                    if tel_d:
+                        url_duvida_wa = f"https://wa.me/55{tel_d}?text={urllib.parse.quote(msg_duvida)}"
+                        st.markdown(
+                            f'<a href="{url_duvida_wa}" target="_blank" class="wa-btn"'
+                            f' style="display:block;text-align:center;">WhatsApp</a>',
+                            unsafe_allow_html=True)
+                with dd2:
+                    if email_d and st.button("Enviar por E-mail", key=f"env_duvida_{c['id']}",
+                                              use_container_width=True):
+                        ok = send_email(email_d, "Hospital de Olhos Vale do Aço — Dúvida", msg_duvida)
+                        if ok:
+                            c['duvida_enviada'] = True
+                            salvar_json()
+                            st.success("Mensagem enviada.")
+                        else:
+                            st.error("Falha no envio.")
 
             if c.get('arquivo_bytes') and c.get('nome_arquivo'):
                 with st.expander("Ver documento original"):
@@ -2446,8 +2614,22 @@ for i, setor in enumerate(SETORES):
                     unsafe_allow_html=True)
                 st.markdown(
                     "<div style='font-size:13px;font-weight:700;color:#9B2C2C;"
-                    "margin-bottom:14px;'>Confirmar Rejeicao — revisar mensagem antes de enviar</div>",
+                    "margin-bottom:14px;'>Confirmar Rejeição — revisar mensagem antes de enviar</div>",
                     unsafe_allow_html=True)
+
+                motivos_rej = [
+                    "Selecione o motivo principal...",
+                    "Perfil não compatível com a vaga",
+                    "Mora muito longe / VT inviável",
+                    "Sem experiência para a vaga solicitada",
+                    "Candidou-se para vaga não disponível no momento",
+                    "Currículo incompleto ou sem informações suficientes",
+                    "Já possui processo em andamento conosco",
+                    "Outro (descrever nas observações)",
+                ]
+                motivo_sel = st.selectbox(
+                    "Motivo da rejeição:",
+                    motivos_rej, key=f"motivo_rej_{c['id']}")
 
                 msg_rej_padrao = (
                     f"Olá {c['nome'].title()}, tudo bem?\n\n"
@@ -2476,18 +2658,22 @@ for i, setor in enumerate(SETORES):
                 with rc2:
                     if st.button("CONFIRMAR E ENVIAR", key=f"rej_env_{c['id']}",
                                  type="primary", use_container_width=True):
-                        with st.spinner("Notificando candidato..."):
-                            send_email(c['email'],
-                                       "Hospital de Olhos Vale do Aço — Processo Seletivo",
-                                       msg_rej_edit)
-                        st.session_state.cvs.remove(c)
-                        nt  = len([x for x in st.session_state.cvs if x['setor']==setor])
-                        idx = st.session_state.pular_idx.get(setor, 0)
-                        st.session_state.pular_idx[setor] = (
-                            max(0, min(idx, nt-1)) if nt > 0 else 0)
-                        st.session_state['rejeitar_foco'] = None
-                        salvar_json()
-                        st.rerun()
+                        if motivo_sel == motivos_rej[0]:
+                            st.warning("Selecione o motivo da rejeição antes de confirmar.")
+                        else:
+                            with st.spinner("Notificando candidato..."):
+                                send_email(c['email'],
+                                           "Hospital de Olhos Vale do Aço — Processo Seletivo",
+                                           msg_rej_edit)
+                            c['motivo_rejeicao'] = motivo_sel
+                            st.session_state.cvs.remove(c)
+                            nt  = len([x for x in st.session_state.cvs if x['setor']==setor])
+                            idx = st.session_state.pular_idx.get(setor, 0)
+                            st.session_state.pular_idx[setor] = (
+                                max(0, min(idx, nt-1)) if nt > 0 else 0)
+                            st.session_state['rejeitar_foco'] = None
+                            salvar_json()
+                            st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
 
             # ── Estrela funcional via form (sem botão visível extra) ──
