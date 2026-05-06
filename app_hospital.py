@@ -953,6 +953,7 @@ _def = {
     'fav_idx': 0,
     'sync_msg': None, 'sync_logs': [],
     'executar_sync': False, 'limite_sync': 30,
+    'alertas_processados': set(),
     '_processados': set(),
 }
 for k, v in _def.items():
@@ -1385,6 +1386,139 @@ def varrer_documentos_recebidos() -> list[dict]:
     return encontrados
 
 # ──────────────────────────────────────────
+# ALERTAS — respostas de candidatos agendados
+# ──────────────────────────────────────────
+TEMPLATES_MSG = {
+    "Confirmação de entrevista (WhatsApp)": {
+        "canal": "whatsapp",
+        "texto": "Olá! 😊\n\nAqui é a equipe de RH do *Hospital de Olhos Vale do Aço*.\n\nEstamos te aguardando para a entrevista:\n📅 *{data}* às *{hora}*\n📍 Rua Ponte Nova, 185 - Centro, Ipatinga/MG\n\nPergunte por *Josi* ou *Paula*. Até lá! 🤝"
+    },
+    "Lembrete de documentos (WhatsApp)": {
+        "canal": "whatsapp",
+        "texto": "Olá! 😊\n\nAqui é o RH do *Hospital de Olhos Vale do Aço*.\n\nLembrando que precisamos dos seus documentos até *{prazo}*.\n\nEnvie por e-mail: *rh@holhosvaledoaco.com.br*\n\nDúvidas? Estamos à disposição! 🤝"
+    },
+    "Reagendamento necessário (WhatsApp)": {
+        "canal": "whatsapp",
+        "texto": "Olá! 😊\n\nAqui é o RH do *Hospital de Olhos Vale do Aço*.\n\nPrecisamos reagendar sua entrevista. Poderia nos informar sua disponibilidade?\n\nAguardamos seu retorno. Obrigada! 🤝"
+    },
+    "Convite para entrevista (E-mail)": {
+        "canal": "email",
+        "texto": "Olá,\n\nO Hospital de Olhos Vale do Aço analisou seu perfil e você foi selecionado(a) para a próxima fase.\n\nTemos disponibilidade para {data}. Responda com o número da sua escolha:\n1 - {h1}\n2 - {h2}\n3 - {h3}\n\nEndereço: Rua Ponte Nova, 185 - Centro, Ipatinga/MG\n\nAtenciosamente,\nEquipe de RH — HOVA"
+    },
+    "Não selecionado (E-mail)": {
+        "canal": "email",
+        "texto": "Olá,\n\nAgradecemos seu interesse no Hospital de Olhos Vale do Aço.\n\nApós análise, não temos vaga compatível com seu perfil no momento. Seu currículo ficará em nossa base.\n\nAtenciosamente,\nEquipe de RH — HOVA"
+    },
+}
+
+def varrer_alertas() -> tuple[int, list[str]]:
+    """
+    Varre caixa de entrada buscando e-mails de candidatos AGENDADOS.
+    Regra simples: qualquer e-mail de um agendado → gera alerta.
+    Não interpreta conteúdo. Usa apenas o remetente para vincular.
+    """
+    novos = 0
+    logs  = []
+
+    # Mapear e-mails dos agendados para acesso rápido
+    mapa_agendados = {
+        c.get('email','').lower().strip(): c
+        for c in st.session_state.agendados
+        if c.get('email','').strip()
+    }
+    if not mapa_agendados:
+        return 0, ["Nenhum candidato agendado com e-mail cadastrado."]
+
+    # IDs já processados para alertas (evita duplicatas)
+    if 'alertas_processados' not in st.session_state:
+        st.session_state.alertas_processados = set()
+
+    try:
+        conn = imaplib.IMAP4_SSL(IMAP_SERVER, 993)
+        conn.login(EMAIL_CONTA, SENHA_CONTA)
+        conn.select("INBOX")
+
+        # Buscar e-mails dos últimos 14 dias
+        data_corte = (datetime.date.today() - datetime.timedelta(days=14)).strftime("%d-%b-%Y")
+        _, ids = conn.search(None, f'SINCE {data_corte}')
+        ids_lista = ids[0].split() if ids[0] else []
+
+        for mid in ids_lista[-200:]:  # máximo 200 e-mails
+            mid_str = mid.decode() if isinstance(mid, bytes) else str(mid)
+            chave_alerta = f"alerta_{mid_str}"
+
+            if chave_alerta in st.session_state.alertas_processados:
+                continue
+
+            try:
+                _, md = conn.fetch(mid, '(RFC822)')
+                msg   = email.message_from_bytes(md[0][1])
+                rem   = email.utils.parseaddr(msg.get('From',''))[1].lower().strip()
+
+                if rem not in mapa_agendados:
+                    continue
+
+                # Candidato agendado respondeu — gerar alerta
+                cand = mapa_agendados[rem]
+
+                # Extrair trecho do corpo (primeiras 300 chars, sem quoted)
+                corpo = ''
+                for pt in msg.walk():
+                    if pt.get_content_type() == 'text/plain':
+                        try:
+                            raw = pt.get_payload(decode=True).decode('utf-8', errors='ignore')
+                            linhas = [l for l in raw.splitlines()
+                                      if l.strip() and not l.strip().startswith('>')][:8]
+                            corpo = ' '.join(linhas)[:300]
+                            break
+                        except: pass
+
+                assunto_raw = msg.get('Subject','')
+                try:
+                    dec, enc = decode_header(assunto_raw)[0]
+                    assunto = dec.decode(enc or 'utf-8', errors='replace') if isinstance(dec,bytes) else str(dec)
+                except:
+                    assunto = assunto_raw
+
+                try:
+                    data_msg = parsedate_to_datetime(msg.get('Date','')).strftime('%d/%m/%Y %H:%M')
+                except:
+                    data_msg = datetime.datetime.now().strftime('%d/%m/%Y %H:%M')
+
+                alerta = {
+                    "tipo":     "resposta",
+                    "assunto":  assunto[:100],
+                    "mensagem": corpo or "(sem conteúdo de texto)",
+                    "data":     data_msg,
+                    "lido":     False,
+                    "mid":      mid_str,
+                }
+
+                # Adicionar alerta ao candidato (evita duplicata por mid)
+                if 'alertas' not in cand:
+                    cand['alertas'] = []
+                ja_existe = any(a.get('mid') == mid_str for a in cand['alertas'])
+                if not ja_existe:
+                    cand['alertas'].append(alerta)
+                    novos += 1
+                    logs.append(f"Alerta: {cand['nome']} respondeu — {assunto[:50]}")
+
+                st.session_state.alertas_processados.add(chave_alerta)
+
+            except Exception as e:
+                logs.append(f"Erro ao processar {mid_str}: {e}")
+                continue
+
+        conn.logout()
+        if novos > 0:
+            salvar_json()
+    except Exception as e:
+        logs.append(f"Erro de conexão IMAP: {e}")
+
+    logs.append(f"Varredura concluída. {novos} novo(s) alerta(s).")
+    return novos, logs
+
+# ──────────────────────────────────────────
 # BUSCA DE CURRICULOS
 # ──────────────────────────────────────────
 def buscar_curriculos(limite):
@@ -1787,11 +1921,28 @@ st.markdown(f"""
 # ──────────────────────────────────────────
 # BARRA DE SINCRONIZAÇÃO
 # ──────────────────────────────────────────
-col_btn, col_msg = st.columns([1, 2])
+col_btn, col_alerta, col_msg = st.columns([1, 1, 2])
 with col_btn:
     if st.button("SINCRONIZAR CURRICULOS", type="primary", use_container_width=True):
         st.session_state.executar_sync = True
         st.session_state.limite_sync   = limite_busca
+        st.rerun()
+with col_alerta:
+    # Contar alertas não lidos
+    n_alertas = sum(
+        1 for c in st.session_state.agendados
+        for a in c.get('alertas', [])
+        if not a.get('lido')
+    )
+    label_alerta = f"📬 VERIFICAR RESPOSTAS" if n_alertas == 0 else f"📬 RESPOSTAS ({n_alertas})"
+    if st.button(label_alerta, use_container_width=True,
+                 type="primary" if n_alertas > 0 else "secondary"):
+        with st.spinner("Verificando respostas de candidatos..."):
+            novos_al, logs_al = varrer_alertas()
+        if novos_al > 0:
+            st.success(f"{novos_al} nova(s) resposta(s) de candidatos!")
+        else:
+            st.info("Nenhuma resposta nova encontrada.")
         st.rerun()
 with col_msg:
     if st.session_state.sync_msg:
@@ -2387,6 +2538,118 @@ for i, setor in enumerate(SETORES):
 # ── ABA 6: AGENDADOS ──────────────────────
 with abas[6]:
     ag_list = _busca(_por_mes(st.session_state.agendados), termo)
+
+    # ══════════════════════════════════════
+    # PAINEL DE ALERTAS — candidatos que responderam
+    # ══════════════════════════════════════
+    alertas_ativos = [
+        c for c in st.session_state.agendados
+        if any(not a.get('lido') for a in c.get('alertas', []))
+    ]
+
+    if alertas_ativos:
+        st.markdown(
+            f"<div style='background:#FFF8EC;border:1.5px solid #D69E2E;border-radius:14px;"
+            f"padding:16px 20px;margin-bottom:20px;'>"
+            f"<div style='font-size:13px;font-weight:800;color:#92540A;margin-bottom:12px;'>"
+            f"📬 {len(alertas_ativos)} candidato(s) responderam — aguardando atenção</div>",
+            unsafe_allow_html=True)
+
+        for cand in alertas_ativos:
+            alertas_nao_lidos = [a for a in cand.get('alertas',[]) if not a.get('lido')]
+            hf = cand['hora_entrevista'].strftime('%H:%M') if cand.get('hora_entrevista') else '—'
+            df = cand['data_entrevista'].strftime('%d/%m/%Y') if cand.get('data_entrevista') else '—'
+
+            with st.expander(f"📩 {cand['nome']} — {len(alertas_nao_lidos)} mensagem(ns) | Entrevista: {df} às {hf}"):
+                for al in alertas_nao_lidos:
+                    st.markdown(
+                        f"<div style='background:#FFFDF7;border-left:3px solid #D69E2E;"
+                        f"border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:10px;'>"
+                        f"<div style='font-size:10px;color:#92540A;font-weight:700;"
+                        f"letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;'>"
+                        f"📧 {al.get('data','—')} — {al.get('assunto','(sem assunto)')}</div>"
+                        f"<div style='font-size:13px;color:#4A5568;line-height:1.6;'>"
+                        f"{al.get('mensagem','')}</div>"
+                        f"</div>",
+                        unsafe_allow_html=True)
+
+                # Observações persistentes do candidato
+                st.markdown(
+                    "<div style='font-size:10px;font-weight:800;color:#004D40;"
+                    "letter-spacing:2px;text-transform:uppercase;margin:12px 0 6px;'>"
+                    "Observações sobre este candidato</div>",
+                    unsafe_allow_html=True)
+                obs_key = f"obs_{cand['id']}"
+                obs_val = st.text_area(
+                    "", value=cand.get('observacoes_rh',''),
+                    height=80, key=obs_key,
+                    placeholder="Ex: Candidato confirmou presença, pediu para trocar horário...",
+                    label_visibility="collapsed")
+
+                al1, al2 = st.columns(2)
+                with al1:
+                    if st.button("SALVAR OBSERVAÇÃO", key=f"salv_obs_{cand['id']}",
+                                 use_container_width=True):
+                        cand['observacoes_rh'] = obs_val
+                        salvar_json()
+                        st.success("Observação salva.")
+                        st.rerun()
+                with al2:
+                    if st.button("✓ MARCAR COMO RESOLVIDO", key=f"res_{cand['id']}",
+                                 type="primary", use_container_width=True):
+                        for a in cand.get('alertas',[]):
+                            a['lido'] = True
+                        salvar_json()
+                        st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<hr style='border:none;border-top:1px solid #E2E6EA;margin:8px 0 20px;'>",
+                    unsafe_allow_html=True)
+
+    # ══════════════════════════════════════
+    # TEMPLATES DE MENSAGEM
+    # ══════════════════════════════════════
+    with st.expander("📋 Templates de Mensagem"):
+        tpl_nome = st.selectbox("Escolher template:", list(TEMPLATES_MSG.keys()),
+                                key="tpl_sel")
+        tpl      = TEMPLATES_MSG[tpl_nome]
+        canal_tpl = tpl["canal"]
+
+        st.markdown(
+            f"<div style='font-size:10px;font-weight:700;color:#004D40;"
+            f"letter-spacing:1.5px;text-transform:uppercase;margin:8px 0 4px;'>"
+            f"Canal: {'📱 WhatsApp' if canal_tpl=='whatsapp' else '📧 E-mail'}</div>",
+            unsafe_allow_html=True)
+
+        tpl_edit = st.text_area(
+            "Editar antes de usar (não altera o original):",
+            value=tpl["texto"], height=160, key="tpl_edit")
+
+        if canal_tpl == "whatsapp":
+            tpl_tel = st.text_input("Telefone destino (só números):", key="tpl_tel",
+                                     placeholder="31999990000")
+            if tpl_tel:
+                url_tpl = f"https://wa.me/55{tpl_tel}?text={urllib.parse.quote(tpl_edit)}"
+                st.markdown(
+                    f'<a href="{url_tpl}" target="_blank" class="wa-btn">'
+                    f'Abrir no WhatsApp</a>',
+                    unsafe_allow_html=True)
+        else:
+            tpl_dest = st.text_input("E-mail destino:", key="tpl_dest")
+            tpl_subj = st.text_input("Assunto:", value="HOVA — Processo Seletivo", key="tpl_subj")
+            if st.button("ENVIAR E-MAIL", key="tpl_enviar", type="primary"):
+                if tpl_dest:
+                    ok = send_email(tpl_dest, tpl_subj, tpl_edit)
+                    if ok: st.success("E-mail enviado!")
+                    else:  st.error("Falha ao enviar.")
+                else:
+                    st.warning("Informe o e-mail destino.")
+
+    st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+
+    # ══════════════════════════════════════
+    # LISTA DE AGENDADOS
+    # ══════════════════════════════════════
     if not ag_list:
         st.markdown('<div class="empty"><div class="e-title">SEM ENTREVISTAS</div>'
                     '<div class="e-sub">Nenhuma entrevista confirmada ainda.</div></div>',
@@ -2400,14 +2663,32 @@ with abas[6]:
             hf = c['hora_entrevista'].strftime('%H:%M') if c.get('hora_entrevista') else '—'
             df = c['data_entrevista'].strftime('%d/%m/%Y') if c.get('data_entrevista') else '—'
 
-            st.markdown("<div class='card-agendado'>", unsafe_allow_html=True)
+            # Badge de alerta não lido
+            tem_alerta = any(not a.get('lido') for a in c.get('alertas',[]))
+            badge_alerta = (
+                "<span style='background:#FEF3C7;color:#92540A;font-size:9px;"
+                "font-weight:700;padding:2px 8px;border-radius:20px;"
+                "margin-left:8px;letter-spacing:1px;'>📬 RESPONDEU</span>"
+                if tem_alerta else ""
+            )
+
+            st.markdown(f"<div class='card-agendado'>", unsafe_allow_html=True)
             ci, cd, ca = st.columns([1,3,3])
             with ci:
                 st.markdown(f'<div class="avatar" style="width:64px;height:64px;font-size:18px;">{iniciais(c["nome"])}</div>', unsafe_allow_html=True)
             with cd:
-                st.markdown(f"**{c['nome']}**")
+                st.markdown(f"**{c['nome']}**{badge_alerta}", unsafe_allow_html=True)
                 st.markdown(f"Data: **{df}** às **{hf}**")
                 st.markdown(f"<span style='color:#8A94A6;font-size:12px;'>{c.get('setor','—')} | {c.get('email','—')}</span>", unsafe_allow_html=True)
+                # Observações salvas
+                if c.get('observacoes_rh'):
+                    st.markdown(
+                        f"<div style='font-size:11px;color:#004D40;font-style:italic;"
+                        f"margin-top:4px;background:#F0FAF8;padding:4px 8px;"
+                        f"border-radius:6px;border-left:2px solid #004D40;'>"
+                        f"📝 {c['observacoes_rh'][:120]}"
+                        f"{'...' if len(c.get('observacoes_rh',''))>120 else ''}</div>",
+                        unsafe_allow_html=True)
             with ca:
                 tel = c.get('telefone','')
                 if tel:
