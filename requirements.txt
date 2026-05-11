@@ -3,3 +3,4 @@ supabase
 pdfplumber
 pymupdf
 docx2txt
+python-docx
