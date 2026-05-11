@@ -1342,25 +1342,37 @@ def novo_manual(nome, email_c, tel, setor):
 # E-mail de teste — troque por pessoal.expert@ntwdoctor.com.br quando confirmar
 EMAIL_CONTABILIDADE = "esterteixeiradepaula@gmail.com"
 
-def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str = "") -> bytes:
+def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str = "", cnpj: str = "") -> bytes:
     """Gera o .docx da ficha EPTOM preenchido com os dados do hospital e do aprendiz."""
     try:
-        import docx
         from docx import Document
         from docx.shared import Pt
         import copy
 
-        # Carregar template original
         doc = Document('/mnt/user-data/uploads/Formulário_para_empresas__3_.docx')
         d   = FICHA_EMPRESA_DADOS
 
-        # Preencher a tabela — linha 1 (índice 1) é a primeira linha de dados
+        # Atualizar data no parágrafo
+        hoje = datetime.date.today()
+        meses_pt = ['janeiro','fevereiro','março','abril','maio','junho',
+                    'julho','agosto','setembro','outubro','novembro','dezembro']
+        data_txt = f"Ipatinga, {hoje.day} de {meses_pt[hoje.month-1]} de {hoje.year}"
+        for p in doc.paragraphs:
+            if 'Ipatinga' in p.text:
+                for run in p.runs:
+                    if 'Ipatinga' in run.text:
+                        run.text = data_txt
+                break
+
+        # Preencher primeira linha vazia da tabela (linha 1)
         tab = doc.tables[0]
         if len(tab.rows) > 1:
             row = tab.rows[1]
+            # Ordem das colunas: Empresa, CNPJ, RespSetor, TelSetor,
+            #                    RespContrato, EmailContrato, (vazia), Aprendiz, Horario, Salario
             valores = [
                 d["empresa"],
-                d["cnpj"],
+                cnpj or d.get("cnpj",""),
                 d["resp_setor"],
                 d["tel_resp_setor"],
                 d["resp_contrato"],
@@ -1372,25 +1384,31 @@ def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str =
             ]
             for idx, cell in enumerate(row.cells):
                 if idx < len(valores):
-                    cell.text = valores[idx]
-                    for para in cell.paragraphs:
-                        for run in para.runs:
-                            run.font.size = Pt(9)
+                    # Limpar e preencher
+                    for p in cell.paragraphs:
+                        for run in p.runs:
+                            run.text = ""
+                    if cell.paragraphs:
+                        run = cell.paragraphs[0].add_run(valores[idx])
+                        run.font.size = Pt(9)
+                    else:
+                        cell.text = valores[idx]
 
         buf = io.BytesIO()
         doc.save(buf)
         return buf.getvalue()
     except Exception as e:
+        print(f"Erro gerar ficha EPTOM: {e}")
         return b""
 
-def enviar_ficha_eptom(nome_aprendiz: str, horario: str = "", salario: str = "") -> tuple[bool, str]:
+def enviar_ficha_eptom(nome_aprendiz: str, horario: str = "", salario: str = "", cnpj: str = "") -> tuple[bool, str]:
     """Envia a ficha preenchida para a EPTOM por e-mail."""
     try:
         from email.mime.multipart import MIMEMultipart
         from email.mime.base      import MIMEBase
         from email                import encoders
 
-        docx_bytes = gerar_ficha_eptom_docx(nome_aprendiz, horario, salario)
+        docx_bytes = gerar_ficha_eptom_docx(nome_aprendiz, horario, salario, cnpj)
         if not docx_bytes:
             return False, "Erro ao gerar o arquivo .docx"
 
@@ -4093,8 +4111,7 @@ with abas[8]:
                             "<div style='font-size:14px;font-weight:800;color:#92540A;margin-bottom:4px;'>"
                             "📋 Ficha da Empresa — EPTOM</div>"
                             "<div style='font-size:12px;color:#4A5568;'>"
-                            "Preencha os dados abaixo, edite se necessário e envie o formulário "
-                            "diretamente para a EPTOM por e-mail.</div></div>",
+                            "Edite os dados abaixo, visualize como ficará e envie para a EPTOM.</div></div>",
                             unsafe_allow_html=True)
 
                         with st.form(key=f"form_eptom_{func['id']}"):
@@ -4108,54 +4125,131 @@ with abas[8]:
                                 value=func.get('eptom_horario_edit', func.get('carga_horaria','')),
                                 placeholder="Ex: 13h às 17h, seg a sex",
                                 key=f"ep_hor_{func['id']}")
-                            ep_salario = st.text_input(
+                            ep3, ep4 = st.columns(2)
+                            ep_salario = ep3.text_input(
                                 "Valor do salário mensal:",
                                 value=func.get('eptom_salario_edit', "R$ 761,55"),
                                 key=f"ep_sal_{func['id']}")
+                            ep_cnpj = ep4.text_input(
+                                "CNPJ:",
+                                value=func.get('eptom_cnpj_edit', FICHA_EMPRESA_DADOS.get('cnpj','')),
+                                placeholder="00.000.000/0000-00",
+                                key=f"ep_cnpj_{func['id']}")
 
-                            # Preview dos dados fixos do hospital
-                            st.markdown(
-                                "<div style='background:#F8FAFB;border-radius:10px;padding:14px 18px;"
-                                "margin-top:4px;font-size:12px;color:#4A5568;line-height:1.8;'>"
-                                f"<b style='color:#004D40;'>Empresa:</b> {FICHA_EMPRESA_DADOS['empresa']}<br>"
-                                f"<b style='color:#004D40;'>Responsável no setor:</b> {FICHA_EMPRESA_DADOS['resp_setor']} — {FICHA_EMPRESA_DADOS['tel_resp_setor']}<br>"
-                                f"<b style='color:#004D40;'>Responsável pelo contrato:</b> {FICHA_EMPRESA_DADOS['resp_contrato']} — {FICHA_EMPRESA_DADOS['email_contrato']}"
-                                "</div>",
-                                unsafe_allow_html=True)
-
-                            st.write("")
                             fb1, fb2, fb3 = st.columns(3)
-                            salvar_ep  = fb1.form_submit_button("SALVAR DADOS", use_container_width=True)
+                            salvar_ep  = fb1.form_submit_button("SALVAR", use_container_width=True)
                             baixar_ep  = fb2.form_submit_button("BAIXAR .DOCX", use_container_width=True)
                             enviar_ep  = fb3.form_submit_button("ENVIAR PARA EPTOM", type="primary", use_container_width=True)
 
-                        # Ações fora do form
+                        # ── Visualização fiel à ficha original ──
+                        st.markdown(
+                            "<div style='font-size:10px;font-weight:800;color:#004D40;"
+                            "letter-spacing:2px;text-transform:uppercase;margin:16px 0 8px;'>"
+                            "Pré-visualização da Ficha</div>",
+                            unsafe_allow_html=True)
+
+                        _nome_ep    = func.get('eptom_nome_edit', func.get('nome','').title())
+                        _hor_ep     = func.get('eptom_horario_edit', func.get('carga_horaria',''))
+                        _sal_ep     = func.get('eptom_salario_edit', 'R$ 761,55')
+                        _cnpj_ep    = func.get('eptom_cnpj_edit', FICHA_EMPRESA_DADOS.get('cnpj',''))
+                        _empresa    = FICHA_EMPRESA_DADOS['empresa']
+                        _resp_setor = FICHA_EMPRESA_DADOS['resp_setor']
+                        _tel_setor  = FICHA_EMPRESA_DADOS['tel_resp_setor']
+                        _resp_cont  = FICHA_EMPRESA_DADOS['resp_contrato']
+                        _email_cont = FICHA_EMPRESA_DADOS['email_contrato']
+                        _hoje       = datetime.date.today().strftime('%d de %B de %Y')
+
+                        st.markdown(f"""
+<div style="background:#fff;border:1px solid #CBD5E0;border-radius:12px;
+            padding:28px 32px;font-family:'Calibri',Arial,sans-serif;font-size:13px;">
+
+  <!-- Título -->
+  <div style="text-align:center;font-weight:900;font-size:15px;
+              text-transform:uppercase;letter-spacing:1px;
+              border-bottom:2px solid #003329;padding-bottom:10px;margin-bottom:16px;">
+    Formulário para Empresas de Contratação de Aprendizes
+  </div>
+
+  <!-- Data e destinatário -->
+  <div style="margin-bottom:8px;color:#555;">Ipatinga, {_hoje}</div>
+  <div style="margin-bottom:20px;font-weight:700;color:#003329;">
+    EPTOM – Núcleo de Atendimento e Aprendizagem de Adolescentes e Jovens
+  </div>
+
+  <!-- Tabela -->
+  <div style="overflow-x:auto;">
+  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead>
+      <tr style="background:#003329;color:#fff;">
+        <th style="padding:8px 10px;border:1px solid #CBD5E0;text-align:left;min-width:100px;">Empresa</th>
+        <th style="padding:8px 10px;border:1px solid #CBD5E0;text-align:left;min-width:100px;">CNPJ</th>
+        <th style="padding:8px 10px;border:1px solid #CBD5E0;text-align:left;min-width:120px;">Resp. no Setor</th>
+        <th style="padding:8px 10px;border:1px solid #CBD5E0;text-align:left;min-width:100px;">Tel. Resp. Setor</th>
+        <th style="padding:8px 10px;border:1px solid #CBD5E0;text-align:left;min-width:130px;">Resp. pelo Contrato</th>
+        <th style="padding:8px 10px;border:1px solid #CBD5E0;text-align:left;min-width:150px;">E-mail Resp. Contrato</th>
+        <th style="padding:8px 10px;border:1px solid #CBD5E0;text-align:left;min-width:150px;">Nome do Aprendiz</th>
+        <th style="padding:8px 10px;border:1px solid #CBD5E0;text-align:left;min-width:100px;">Horário</th>
+        <th style="padding:8px 10px;border:1px solid #CBD5E0;text-align:left;min-width:90px;">Salário</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr style="background:#F0FAF8;">
+        <td style="padding:8px 10px;border:1px solid #CBD5E0;font-weight:600;">{_empresa}</td>
+        <td style="padding:8px 10px;border:1px solid #CBD5E0;">{_cnpj_ep or '—'}</td>
+        <td style="padding:8px 10px;border:1px solid #CBD5E0;">{_resp_setor}</td>
+        <td style="padding:8px 10px;border:1px solid #CBD5E0;">{_tel_setor}</td>
+        <td style="padding:8px 10px;border:1px solid #CBD5E0;">{_resp_cont}</td>
+        <td style="padding:8px 10px;border:1px solid #CBD5E0;">{_email_cont}</td>
+        <td style="padding:8px 10px;border:1px solid #CBD5E0;font-weight:700;color:#003329;">{_nome_ep}</td>
+        <td style="padding:8px 10px;border:1px solid #CBD5E0;">{_hor_ep or '—'}</td>
+        <td style="padding:8px 10px;border:1px solid #CBD5E0;">{_sal_ep}</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div style="margin-top:16px;font-size:11px;color:#9AA5B4;text-align:center;">
+    Esta é uma pré-visualização. O arquivo .docx enviado para a EPTOM seguirá o modelo original.
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+                        # Ações
                         if salvar_ep:
                             func['eptom_nome_edit']    = ep_nome
                             func['eptom_horario_edit'] = ep_horario
                             func['eptom_salario_edit'] = ep_salario
+                            func['eptom_cnpj_edit']    = ep_cnpj
                             salvar_json()
-                            st.success("Dados salvos. Use ENVIAR PARA EPTOM quando quiser enviar.")
+                            st.success("Dados salvos com sucesso.")
+                            st.rerun()
 
                         if baixar_ep:
-                            docx_bytes = gerar_ficha_eptom_docx(ep_nome, ep_horario, ep_salario)
+                            func['eptom_nome_edit']    = ep_nome
+                            func['eptom_horario_edit'] = ep_horario
+                            func['eptom_salario_edit'] = ep_salario
+                            func['eptom_cnpj_edit']    = ep_cnpj
+                            docx_bytes = gerar_ficha_eptom_docx(ep_nome, ep_horario, ep_salario, ep_cnpj)
                             if docx_bytes:
                                 st.download_button(
-                                    "⬇ Clique aqui para baixar o arquivo",
+                                    "⬇ Clique aqui para baixar o .docx",
                                     data=docx_bytes,
                                     file_name=f"Ficha_EPTOM_{ep_nome.replace(' ','_')}.docx",
                                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                     use_container_width=True,
                                     key=f"dl_eptom_{func['id']}")
+                            else:
+                                st.error("Erro ao gerar o arquivo. Verifique se o template está no repositório.")
 
                         if enviar_ep:
+                            func['eptom_nome_edit']    = ep_nome
+                            func['eptom_horario_edit'] = ep_horario
+                            func['eptom_salario_edit'] = ep_salario
+                            func['eptom_cnpj_edit']    = ep_cnpj
                             with st.spinner("Enviando ficha para a EPTOM..."):
-                                ok_ep, msg_ep = enviar_ficha_eptom(ep_nome, ep_horario, ep_salario)
+                                ok_ep, msg_ep = enviar_ficha_eptom(ep_nome, ep_horario, ep_salario, ep_cnpj)
                             if ok_ep:
                                 func['eptom_ficha_enviada'] = True
-                                func['eptom_nome_edit']    = ep_nome
-                                func['eptom_horario_edit'] = ep_horario
-                                func['eptom_salario_edit'] = ep_salario
                                 salvar_json()
                                 st.success(f"✅ {msg_ep}")
                             else:
