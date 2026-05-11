@@ -74,6 +74,22 @@ VAGAS_ABERTAS = [
     "TRIAGEM GERAL",
 ]
 
+# ── EPTOM — Instituição de Jovem Aprendiz ──
+EMAIL_EPTOM       = "eptom.aprendiz@gmail.com"
+EMAIL_EPTOM_RESP  = "eptom@eptom.webnode.com.br"  # e-mail de retorno para a EPTOM
+
+# Dados fixos do Hospital para preencher a ficha automaticamente
+FICHA_EMPRESA_DADOS = {
+    "empresa":        "Hospital de Olhos Vale do Aço",
+    "cnpj":           "",   # preencha se quiser pré-popular
+    "resp_setor":     "Josiane",
+    "tel_resp_setor": "(31) 9 8860-0023",
+    "resp_contrato":  "Paula",
+    "email_contrato": "rh@holhosvaledoaco.com.br",
+    "horario":        "A definir pela EPTOM",
+    "salario":        "R$ 761,55",
+}
+
 def detectar_primeiro_emprego(texto: str) -> bool:
     """Retorna True se o currículo indica candidato sem experiência."""
     if not texto: return False
@@ -1326,6 +1342,85 @@ def novo_manual(nome, email_c, tel, setor):
 # E-mail de teste — troque por pessoal.expert@ntwdoctor.com.br quando confirmar
 EMAIL_CONTABILIDADE = "esterteixeiradepaula@gmail.com"
 
+def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str = "") -> bytes:
+    """Gera o .docx da ficha EPTOM preenchido com os dados do hospital e do aprendiz."""
+    try:
+        import docx
+        from docx import Document
+        from docx.shared import Pt
+        import copy
+
+        # Carregar template original
+        doc = Document('/mnt/user-data/uploads/Formulário_para_empresas__3_.docx')
+        d   = FICHA_EMPRESA_DADOS
+
+        # Preencher a tabela — linha 1 (índice 1) é a primeira linha de dados
+        tab = doc.tables[0]
+        if len(tab.rows) > 1:
+            row = tab.rows[1]
+            valores = [
+                d["empresa"],
+                d["cnpj"],
+                d["resp_setor"],
+                d["tel_resp_setor"],
+                d["resp_contrato"],
+                d["email_contrato"],
+                "",
+                nome_aprendiz.title(),
+                horario or d["horario"],
+                salario or d["salario"],
+            ]
+            for idx, cell in enumerate(row.cells):
+                if idx < len(valores):
+                    cell.text = valores[idx]
+                    for para in cell.paragraphs:
+                        for run in para.runs:
+                            run.font.size = Pt(9)
+
+        buf = io.BytesIO()
+        doc.save(buf)
+        return buf.getvalue()
+    except Exception as e:
+        return b""
+
+def enviar_ficha_eptom(nome_aprendiz: str, horario: str = "", salario: str = "") -> tuple[bool, str]:
+    """Envia a ficha preenchida para a EPTOM por e-mail."""
+    try:
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.base      import MIMEBase
+        from email                import encoders
+
+        docx_bytes = gerar_ficha_eptom_docx(nome_aprendiz, horario, salario)
+        if not docx_bytes:
+            return False, "Erro ao gerar o arquivo .docx"
+
+        nome_limpo = re.sub(r'[^A-Za-z0-9 ]', '', nome_aprendiz).replace(' ', '_')
+        nome_arq   = f"Ficha_Empresa_HOVA_{nome_limpo}.docx"
+
+        msg = MIMEMultipart()
+        msg['Subject'] = f"Formulário Empresa — {nome_aprendiz.title()} — HOVA"
+        msg['From']    = EMAIL_CONTA
+        msg['To']      = EMAIL_EPTOM_RESP
+        msg['Bcc']     = EMAIL_CONTA
+        msg.attach(MIMEText(
+            f"Bom dia!\n\nSegue em anexo o formulário da empresa preenchido para a aprendiz "
+            f"{nome_aprendiz.title()}.\n\nAtenciosamente,\nEquipe de RH — Hospital de Olhos Vale do Aço",
+            'plain', 'utf-8'
+        ))
+
+        part = MIMEBase('application', 'vnd.openxmlformats-officedocument.wordprocessingml.document')
+        part.set_payload(docx_bytes)
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f'attachment; filename="{nome_arq}"')
+        msg.attach(part)
+
+        with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as s:
+            s.login(EMAIL_CONTA, SENHA_CONTA)
+            s.send_message(msg)
+        return True, f"Ficha enviada para {EMAIL_EPTOM_RESP}"
+    except Exception as e:
+        return False, f"Erro: {e}"
+
 # Assunto padrão para o candidato responder com documentos
 # O sistema vai buscar e-mails com esse prefixo para salvar automaticamente
 ASSUNTO_DOCS_PREFIX = "HOVA-DOCS"
@@ -1604,9 +1699,79 @@ def buscar_curriculos(limite):
         conn.logout()
         return 0, [f"Erro ao listar e-mails: {e}"]
 
-    # 3. Processar
-    emails_em_triagem = {c['email'] for c in st.session_state.cvs}
+    # 3. Processar — prioridade para e-mails da EPTOM
+    emails_em_triagem  = {c['email'] for c in st.session_state.cvs}
     emails_processados = st.session_state._processados
+
+    # ── Processar EPTOM primeiro (prioridade máxima) ──────────
+    try:
+        _, dados_eptom = conn.search(None, f'FROM "{EMAIL_EPTOM}"')
+        ids_eptom = dados_eptom[0].split() if dados_eptom[0] else []
+        for mid in ids_eptom[-20:]:
+            try:
+                _, md = conn.fetch(mid, '(RFC822)')
+                if not md or not isinstance(md[0], tuple): continue
+                msg    = email.message_from_bytes(md[0][1])
+                msg_id = msg.get('Message-ID') or mid.decode()
+                for part in msg.walk():
+                    if part.get_content_maintype() == 'multipart': continue
+                    fn = part.get_filename() or ''
+                    if not fn.lower().endswith(('.pdf','.doc','.docx')): continue
+                    chave = f"eptom::{msg_id}::{fn}"
+                    if chave in st.session_state.historico_emails: continue
+                    payload = part.get_payload(decode=True)
+                    if not payload: continue
+                    txt = ''
+                    if fn.lower().endswith('.pdf'):
+                        if pdfplumber:
+                            try:
+                                buf = io.BytesIO(payload)
+                                with pdfplumber.open(buf) as pdf:
+                                    txt = "\n".join(pg.extract_text() for pg in pdf.pages if pg.extract_text())
+                            except: pass
+                        if not txt and fitz:
+                            try:
+                                doc_f = fitz.open(stream=payload, filetype="pdf")
+                                txt   = "\n".join(doc_f[i].get_text() for i in range(len(doc_f)))
+                            except: pass
+                    elif fn.lower().endswith(('.doc','.docx')) and docx2txt:
+                        try:
+                            with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tf:
+                                tf.write(payload); tfn = tf.name
+                            txt = docx2txt.process(tfn); os.remove(tfn)
+                        except: pass
+                    nome_arq   = os.path.splitext(fn)[0].replace('_',' ').replace('-',' ').upper().strip()
+                    emails_pdf = re.findall(r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', txt)
+                    email_cand = emails_pdf[0].lower() if emails_pdf else f"eptom.{re.sub(r'[^a-z0-9]','',nome_arq.lower())}@aprendiz"
+                    if email_cand in emails_processados or email_cand in emails_em_triagem:
+                        st.session_state.historico_emails.add(chave); continue
+                    try:
+                        dt = parsedate_to_datetime(msg.get('Date',''))
+                        ds = dt.strftime("%d/%m/%Y"); diso = dt.strftime("%Y-%m-%d"); mes_n = dt.month
+                    except:
+                        now = datetime.datetime.now()
+                        ds = now.strftime("%d/%m/%Y"); diso = now.strftime("%Y-%m-%d"); mes_n = now.month
+                    st.session_state.cvs.append({
+                        "id": str(int(time.time()*1000))+str(capturados)+"E",
+                        "nome": nome_arq, "email": email_cand, "telefone": "",
+                        "data": ds, "data_iso": diso, "mes_num": mes_n,
+                        "cidade": "Ipatinga", "tags": ["EPTOM","Jovem Aprendiz"],
+                        "preview": resumo(txt), "setor": "JOVEM APRENDIZ",
+                        "nome_arquivo": fn, "arquivo_bytes": payload, "foto": None,
+                        "manual": False, "eptom": True, "primeiro_emprego": True,
+                        "cidade_longe": False, "cidade_longe_nome": "",
+                        "motivo_mudanca": "", "motivo_rejeicao": "",
+                        "obs_triagem": "📋 Enviado pela EPTOM — preencher ficha após contratação.",
+                        "duvida_enviada": False,
+                    })
+                    st.session_state.historico_emails.add(chave)
+                    emails_em_triagem.add(email_cand)
+                    capturados += 1
+                    logs.append(f"[EPTOM] Capturado: {nome_arq}")
+            except Exception as e:
+                logs.append(f"[EPTOM] Erro: {e}"); continue
+    except Exception as e:
+        logs.append(f"[EPTOM] Erro busca: {e}")
 
     for mid in ids_varrer:
         try:
@@ -2890,27 +3055,37 @@ with abas[6]:
                     st.markdown(f'<a href="https://wa.me/{tel}?text={urllib.parse.quote(mwa)}" target="_blank" class="wa-btn">Confirmar via WhatsApp</a>', unsafe_allow_html=True)
 
                 if st.session_state.contratar_foco == c['id']:
-                    tem_email_c = bool(c.get('email','').strip())
+                    tem_email_c  = bool(c.get('email','').strip())
+                    eh_aprendiz  = c.get('setor','') == 'JOVEM APRENDIZ'
+
                     st.caption("DADOS DE ADMISSÃO")
-                    cdl, cdi = st.columns(2)
-                    dl = cdl.date_input("Prazo documentos:", key=f"dl_{c['id']}")
-                    di = cdi.date_input("Data de início:", key=f"di_{c['id']}")
-                    hi = st.time_input("Horário de entrada:", datetime.time(8,0), key=f"hi_{c['id']}")
-                    tn = st.text_input("WhatsApp (só números):", value=tel, key=f"wa_{c['id']}")
+
+                    if eh_aprendiz:
+                        # ── Jovem Aprendiz: data/horário definidos pela EPTOM ──
+                        st.markdown(
+                            "<div class='notif notif-info' style='text-align:left;font-size:12px;'>"
+                            "👶 <b>Jovem Aprendiz</b> — Data de início e horário são definidos pela "
+                            "<b>EPTOM</b>. Não informe aqui. Preencha a ficha da EPTOM após confirmar.</div>",
+                            unsafe_allow_html=True)
+                        dl = datetime.date.today() + datetime.timedelta(days=7)
+                        di = None
+                        hi = None
+                        tn = st.text_input("WhatsApp (só números):", value=tel, key=f"wa_{c['id']}")
+                    else:
+                        cdl, cdi = st.columns(2)
+                        dl = cdl.date_input("Prazo documentos:", key=f"dl_{c['id']}")
+                        di = cdi.date_input("Data de início:",   key=f"di_{c['id']}")
+                        hi = st.time_input("Horário de entrada:", datetime.time(8,0), key=f"hi_{c['id']}")
+                        tn = st.text_input("WhatsApp (só números):", value=tel, key=f"wa_{c['id']}")
 
                     if not tem_email_c:
-                        st.markdown(
-                            "<div class='notif notif-info' style='font-size:12px;text-align:left;'>"
-                            "📱 Sem e-mail — as instruções de documentos serão enviadas via WhatsApp.</div>",
-                            unsafe_allow_html=True)
-
-                        # Mensagem WhatsApp de admissão/documentos
                         msg_adm_wa = (
                             f"Olá! 😊\n\n"
                             f"Aqui é o RH do *Hospital de Olhos Vale do Aço*.\n\n"
                             f"Temos o prazer de informar que você foi *selecionado(a)* para integrar nossa equipe! 🎉\n\n"
-                            f"Seu início será em *{di.strftime('%d/%m/%Y')}* às *{hi.strftime('%H:%M')}*.\n\n"
-                            f"Para a admissão, precisamos que você envie os documentos abaixo até *{dl.strftime('%d/%m/%Y')}* "
+                            + (f"Seu início será em *{di.strftime('%d/%m/%Y')}* às *{hi.strftime('%H:%M')}*.\n\n" if di and hi else
+                               "A data e horário de início serão informados em breve pela EPTOM.\n\n")
+                            + f"Para a admissão, precisamos que você envie os documentos abaixo até *{dl.strftime('%d/%m/%Y')}* "
                             f"pelo e-mail: *rh@holhosvaledoaco.com.br*\n\n"
                             f"📋 *Documentos necessários:*\n"
                             f"• RG\n• CPF\n• Comprovante de residência\n• Cartão do PIS\n"
@@ -2920,6 +3095,10 @@ with abas[6]:
                             f"Qualquer dúvida, estamos à disposição! 🤝\n"
                             f"— Equipe de RH — HOVA"
                         )
+                        st.markdown(
+                            "<div class='notif notif-info' style='font-size:12px;text-align:left;'>"
+                            "📱 Sem e-mail — instruções serão enviadas via WhatsApp.</div>",
+                            unsafe_allow_html=True)
 
                     cx, cok = st.columns(2)
                     with cx:
@@ -2930,9 +3109,19 @@ with abas[6]:
                         if tem_email_c:
                             if st.button("CONFIRMAR", key=f"cok_{c['id']}", type="primary", use_container_width=True):
                                 with st.spinner("Enviando e-mail de admissão..."):
-                                    ok = send_email_admissao(c['email'], c['nome'], dl, di, hi, c.get('id',''))
-                                c.update({'data_inicio_contrato':di,'hora_inicio_contrato':hi,
-                                          'telefone':tn,'email_admissao_enviado':ok})
+                                    ok = send_email_admissao(
+                                        c['email'], c['nome'], dl,
+                                        di or datetime.date.today(),
+                                        hi or datetime.time(8,0),
+                                        c.get('id','')
+                                    )
+                                c.update({
+                                    'data_inicio_contrato':   di,
+                                    'hora_inicio_contrato':   hi,
+                                    'telefone': tn,
+                                    'email_admissao_enviado': ok,
+                                    'eptom': eh_aprendiz,
+                                })
                                 st.session_state.contratados.append(c)
                                 st.session_state.agendados.remove(c)
                                 st.session_state.contratar_foco = None
@@ -2945,7 +3134,6 @@ with abas[6]:
                                 time.sleep(1)
                                 st.rerun()
                         else:
-                            # Sem e-mail — abrir WhatsApp com instruções
                             tel_limpo = ''.join(filter(str.isdigit, tn))
                             if tel_limpo:
                                 url_adm_wa = f"https://wa.me/55{tel_limpo}?text={urllib.parse.quote(msg_adm_wa)}"
@@ -2957,16 +3145,20 @@ with abas[6]:
                                     unsafe_allow_html=True)
                             if st.button("CONFIRMAR CONTRATAÇÃO ✓", key=f"cok_{c['id']}",
                                          type="primary", use_container_width=True):
-                                c.update({'data_inicio_contrato':di,'hora_inicio_contrato':hi,
-                                          'telefone':''.join(filter(str.isdigit,tn)),
-                                          'email_admissao_enviado':False})
+                                c.update({
+                                    'data_inicio_contrato':   di,
+                                    'hora_inicio_contrato':   hi,
+                                    'telefone': ''.join(filter(str.isdigit, tn)),
+                                    'email_admissao_enviado': False,
+                                    'eptom': eh_aprendiz,
+                                })
                                 st.session_state.contratados.append(c)
                                 st.session_state.agendados.remove(c)
                                 st.session_state.contratar_foco = None
                                 salvar_json()
                                 st.session_state.sync_msg = {
-                                    'tipo':'ok',
-                                    'texto':f"{c['nome']} contratado(a). Instruções enviadas via WhatsApp."
+                                    'tipo': 'ok',
+                                    'texto': f"{c['nome']} contratado(a). Instruções enviadas via WhatsApp."
                                 }
                                 time.sleep(1)
                                 st.rerun()
@@ -3569,9 +3761,15 @@ with abas[8]:
                 st.write("")
 
                 # ── TABS internas do dossiê ──────────────────────
-                tab_dados, tab_docs, tab_ntw = st.tabs([
-                    "Dados & RH", "Documentos", "Enviar para Contabilidade"
-                ])
+                eh_eptom_func = func.get('eptom', False) or func.get('setor','') == 'JOVEM APRENDIZ'
+                tabs_dossie = ["Dados & RH", "Documentos", "Enviar para Contabilidade"]
+                if eh_eptom_func:
+                    tabs_dossie.append("📋 Ficha EPTOM")
+                tab_lista = st.tabs(tabs_dossie)
+                tab_dados = tab_lista[0]
+                tab_docs  = tab_lista[1]
+                tab_ntw   = tab_lista[2]
+                tab_eptom = tab_lista[3] if eh_eptom_func else None
 
                 # ── TAB 1: DADOS ─────────────────────────────────
                 with tab_dados:
@@ -3871,26 +4069,91 @@ with abas[8]:
                             type="primary", use_container_width=True)
 
                     if enviar_ntw_ok:
-                        # Atualizar dados antes de enviar
                         func['cargo_atual']             = ntw_cargo.strip()
                         func['carga_horaria']           = ntw_carga.strip()
                         func['data_inicio_contrato']    = ntw_adm
                         func['data_inicio_experiencia'] = ntw_exp
                         func['vale_transporte']         = ntw_vt
                         func['linhas_onibus']           = ntw_linhas.strip()
-
                         with st.spinner("Enviando para NTW Doctor..."):
                             ok_ntw, msg_ntw = enviar_ntw(func)
-
                         if ok_ntw:
                             func['ntw_enviado'] = True
                             salvar_json()
-                            st.markdown(
-                                f"<div class='notif notif-ok'>{msg_ntw}</div>",
-                                unsafe_allow_html=True)
+                            st.markdown(f"<div class='notif notif-ok'>{msg_ntw}</div>", unsafe_allow_html=True)
                         else:
+                            st.markdown(f"<div class='notif notif-warn'>{msg_ntw}</div>", unsafe_allow_html=True)
+
+                # ── TAB EPTOM ────────────────────────────────────
+                if tab_eptom:
+                    with tab_eptom:
+                        st.markdown(
+                            "<div style='background:#FFF8EC;border:1.5px solid #D69E2E;"
+                            "border-radius:14px;padding:18px 22px;margin-bottom:16px;'>"
+                            "<div style='font-size:14px;font-weight:800;color:#92540A;margin-bottom:4px;'>"
+                            "📋 Ficha da Empresa — EPTOM</div>"
+                            "<div style='font-size:12px;color:#4A5568;'>"
+                            "Preencha os dados abaixo, edite se necessário e envie o formulário "
+                            "diretamente para a EPTOM por e-mail.</div></div>",
+                            unsafe_allow_html=True)
+
+                        ep1, ep2 = st.columns(2)
+                        ep_nome    = ep1.text_input("Nome completo do aprendiz:",
+                                                     value=func.get('nome','').title(),
+                                                     key=f"ep_nome_{func['id']}")
+                        ep_horario = ep2.text_input("Horário de trabalho:",
+                                                     value=func.get('carga_horaria',''),
+                                                     placeholder="Ex: 14h às 18h, seg a sex",
+                                                     key=f"ep_hor_{func['id']}")
+                        ep_salario = st.text_input("Valor do salário mensal:",
+                                                    value="R$ 761,55",
+                                                    key=f"ep_sal_{func['id']}")
+
+                        # Preview dos dados fixos
+                        st.markdown(
+                            "<div style='background:#F8FAFB;border-radius:10px;padding:14px 18px;"
+                            "margin-top:12px;font-size:12px;color:#4A5568;line-height:1.8;'>"
+                            f"<b style='color:#004D40;'>Empresa:</b> {FICHA_EMPRESA_DADOS['empresa']}<br>"
+                            f"<b style='color:#004D40;'>Responsável no setor:</b> {FICHA_EMPRESA_DADOS['resp_setor']} — {FICHA_EMPRESA_DADOS['tel_resp_setor']}<br>"
+                            f"<b style='color:#004D40;'>Responsável pelo contrato:</b> {FICHA_EMPRESA_DADOS['resp_contrato']} — {FICHA_EMPRESA_DADOS['email_contrato']}<br>"
+                            f"<b style='color:#004D40;'>Aprendiz:</b> {ep_nome}<br>"
+                            f"<b style='color:#004D40;'>Horário:</b> {ep_horario or 'A definir'}<br>"
+                            f"<b style='color:#004D40;'>Salário:</b> {ep_salario}"
+                            "</div>",
+                            unsafe_allow_html=True)
+
+                        st.write("")
+                        ef1, ef2 = st.columns(2)
+                        with ef1:
+                            # Baixar .docx preenchido
+                            docx_bytes = gerar_ficha_eptom_docx(ep_nome, ep_horario, ep_salario)
+                            if docx_bytes:
+                                st.download_button(
+                                    "Baixar Ficha Preenchida (.docx)",
+                                    data=docx_bytes,
+                                    file_name=f"Ficha_EPTOM_{ep_nome.replace(' ','_')}.docx",
+                                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                    use_container_width=True,
+                                    key=f"dl_eptom_{func['id']}")
+                        with ef2:
+                            if st.button("ENVIAR PARA EPTOM POR E-MAIL",
+                                         type="primary", use_container_width=True,
+                                         key=f"env_eptom_{func['id']}"):
+                                with st.spinner("Enviando ficha para a EPTOM..."):
+                                    ok_ep, msg_ep = enviar_ficha_eptom(ep_nome, ep_horario, ep_salario)
+                                if ok_ep:
+                                    func['eptom_ficha_enviada'] = True
+                                    salvar_json()
+                                    st.markdown(f"<div class='notif notif-ok'>{msg_ep}</div>",
+                                                unsafe_allow_html=True)
+                                else:
+                                    st.markdown(f"<div class='notif notif-warn'>{msg_ep}</div>",
+                                                unsafe_allow_html=True)
+
+                        if func.get('eptom_ficha_enviada'):
                             st.markdown(
-                                f"<div class='notif notif-warn'>{msg_ntw}</div>",
+                                "<div class='notif notif-ok' style='margin-top:10px;'>"
+                                "✅ Ficha já foi enviada para a EPTOM.</div>",
                                 unsafe_allow_html=True)
 
         # ── GRID DE CARDS — estilo referência ────────────────────
