@@ -1343,56 +1343,88 @@ def novo_manual(nome, email_c, tel, setor):
 EMAIL_CONTABILIDADE = "esterteixeiradepaula@gmail.com"
 
 def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str = "", cnpj: str = "") -> bytes:
-    """Gera o .docx da ficha EPTOM preenchido com os dados do hospital e do aprendiz."""
+    """
+    Gera o .docx preenchido preservando 100% da formatação original da EPTOM.
+    Apenas insere texto nas células vazias da primeira linha de dados.
+    """
     try:
         from docx import Document
         from docx.shared import Pt
-        import copy
+        from copy import deepcopy
+        import lxml.etree as etree
 
         doc = Document('/mnt/user-data/uploads/Formulário_para_empresas__3_.docx')
         d   = FICHA_EMPRESA_DADOS
 
-        # Atualizar data no parágrafo
+        # Atualizar data no parágrafo preservando o run original
         hoje = datetime.date.today()
         meses_pt = ['janeiro','fevereiro','março','abril','maio','junho',
                     'julho','agosto','setembro','outubro','novembro','dezembro']
-        data_txt = f"Ipatinga, {hoje.day} de {meses_pt[hoje.month-1]} de {hoje.year}"
+        data_txt = f"Ipatinga,  {hoje.day} de {meses_pt[hoje.month-1]} de {hoje.year}"
         for p in doc.paragraphs:
             if 'Ipatinga' in p.text:
-                for run in p.runs:
-                    if 'Ipatinga' in run.text:
-                        run.text = data_txt
+                # Preservar formatação do primeiro run, só trocar o texto
+                if p.runs:
+                    p.runs[0].text = data_txt
+                    for r in p.runs[1:]:
+                        r.text = ""
                 break
 
-        # Preencher primeira linha vazia da tabela (linha 1)
+        def _preencher_celula(cell, valor: str):
+            """
+            Preenche célula preservando toda a formatação original.
+            Mantém o primeiro parágrafo/run e apenas troca o texto.
+            """
+            if not cell.paragraphs:
+                return
+            para = cell.paragraphs[0]
+            if para.runs:
+                # Preservar fonte, tamanho, negrito do run original
+                run0 = para.runs[0]
+                fonte_original = run0.font.name
+                tamanho_original = run0.font.size
+                negrito_original = run0.bold
+                run0.text = valor
+                # Restaurar formatação se foi perdida
+                if fonte_original:
+                    run0.font.name = fonte_original
+                if tamanho_original:
+                    run0.font.size = tamanho_original
+                # Limpar runs adicionais
+                for r in para.runs[1:]:
+                    r.text = ""
+            else:
+                # Sem runs — criar um com a formatação do parágrafo
+                run = para.add_run(valor)
+                run.font.size = Pt(9)
+            # Limpar parágrafos extras dentro da célula
+            for extra_para in cell.paragraphs[1:]:
+                for r in extra_para.runs:
+                    r.text = ""
+
+        # Preencher linha 1 (primeira linha de dados — índice 1)
         tab = doc.tables[0]
         if len(tab.rows) > 1:
             row = tab.rows[1]
-            # Ordem das colunas: Empresa, CNPJ, RespSetor, TelSetor,
-            #                    RespContrato, EmailContrato, (vazia), Aprendiz, Horario, Salario
-            valores = [
-                d["empresa"],
-                cnpj or d.get("cnpj",""),
-                d["resp_setor"],
-                d["tel_resp_setor"],
-                d["resp_contrato"],
-                d["email_contrato"],
-                "",
-                nome_aprendiz.title(),
-                horario or d["horario"],
-                salario or d["salario"],
-            ]
+            # Mapeamento exato das colunas conforme o template original:
+            # [0] Empresa  [1] CNPJ  [2] Resp.Setor  [3] Tel.Setor
+            # [4] Resp.Contrato  [5] Email.Contrato  [6] (vazia)
+            # [7] Nome Aprendiz  [8] Horário  [9] Salário
+            valores = {
+                0: d["empresa"],
+                1: cnpj or d.get("cnpj", ""),
+                2: d["resp_setor"],
+                3: d["tel_resp_setor"],
+                4: d["resp_contrato"],
+                5: d["email_contrato"],
+                6: "",
+                7: nome_aprendiz.title(),
+                8: horario or d["horario"],
+                9: salario or d["salario"],
+            }
             for idx, cell in enumerate(row.cells):
-                if idx < len(valores):
-                    # Limpar e preencher
-                    for p in cell.paragraphs:
-                        for run in p.runs:
-                            run.text = ""
-                    if cell.paragraphs:
-                        run = cell.paragraphs[0].add_run(valores[idx])
-                        run.font.size = Pt(9)
-                    else:
-                        cell.text = valores[idx]
+                if idx in valores:
+                    _preencher_celula(cell, valores[idx])
 
         buf = io.BytesIO()
         doc.save(buf)
@@ -4157,7 +4189,7 @@ with abas[8]:
                         _tel_setor  = FICHA_EMPRESA_DADOS['tel_resp_setor']
                         _resp_cont  = FICHA_EMPRESA_DADOS['resp_contrato']
                         _email_cont = FICHA_EMPRESA_DADOS['email_contrato']
-                        _hoje       = datetime.date.today().strftime('%d de %B de %Y')
+                        _hoje_str = f"Ipatinga, {datetime.date.today().day} de {['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'][datetime.date.today().month-1]} de {datetime.date.today().year}"
 
                         st.markdown(f"""
 <div style="background:#fff;border:1px solid #CBD5E0;border-radius:12px;
@@ -4171,7 +4203,7 @@ with abas[8]:
   </div>
 
   <!-- Data e destinatário -->
-  <div style="margin-bottom:8px;color:#555;">Ipatinga, {_hoje}</div>
+  <div style="margin-bottom:8px;color:#555;">{_hoje_str}</div>
   <div style="margin-bottom:20px;font-weight:700;color:#003329;">
     EPTOM – Núcleo de Atendimento e Aprendizagem de Adolescentes e Jovens
   </div>
