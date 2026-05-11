@@ -3067,7 +3067,7 @@ with abas[6]:
                             "👶 <b>Jovem Aprendiz</b> — Data de início e horário são definidos pela "
                             "<b>EPTOM</b>. Não informe aqui. Preencha a ficha da EPTOM após confirmar.</div>",
                             unsafe_allow_html=True)
-                        dl = datetime.date.today() + datetime.timedelta(days=7)
+                        dl = st.date_input("Prazo documentos:", key=f"dl_{c['id']}")
                         di = None
                         hi = None
                         tn = st.text_input("WhatsApp (só números):", value=tel, key=f"wa_{c['id']}")
