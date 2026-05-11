@@ -4097,63 +4097,74 @@ with abas[8]:
                             "diretamente para a EPTOM por e-mail.</div></div>",
                             unsafe_allow_html=True)
 
-                        ep1, ep2 = st.columns(2)
-                        ep_nome    = ep1.text_input("Nome completo do aprendiz:",
-                                                     value=func.get('nome','').title(),
-                                                     key=f"ep_nome_{func['id']}")
-                        ep_horario = ep2.text_input("Horário de trabalho:",
-                                                     value=func.get('carga_horaria',''),
-                                                     placeholder="Ex: 14h às 18h, seg a sex",
-                                                     key=f"ep_hor_{func['id']}")
-                        ep_salario = st.text_input("Valor do salário mensal:",
-                                                    value="R$ 761,55",
-                                                    key=f"ep_sal_{func['id']}")
+                        with st.form(key=f"form_eptom_{func['id']}"):
+                            ep1, ep2 = st.columns(2)
+                            ep_nome    = ep1.text_input(
+                                "Nome completo do aprendiz:",
+                                value=func.get('eptom_nome_edit', func.get('nome','').title()),
+                                key=f"ep_nome_{func['id']}")
+                            ep_horario = ep2.text_input(
+                                "Horário de trabalho:",
+                                value=func.get('eptom_horario_edit', func.get('carga_horaria','')),
+                                placeholder="Ex: 13h às 17h, seg a sex",
+                                key=f"ep_hor_{func['id']}")
+                            ep_salario = st.text_input(
+                                "Valor do salário mensal:",
+                                value=func.get('eptom_salario_edit', "R$ 761,55"),
+                                key=f"ep_sal_{func['id']}")
 
-                        # Preview dos dados fixos
-                        st.markdown(
-                            "<div style='background:#F8FAFB;border-radius:10px;padding:14px 18px;"
-                            "margin-top:12px;font-size:12px;color:#4A5568;line-height:1.8;'>"
-                            f"<b style='color:#004D40;'>Empresa:</b> {FICHA_EMPRESA_DADOS['empresa']}<br>"
-                            f"<b style='color:#004D40;'>Responsável no setor:</b> {FICHA_EMPRESA_DADOS['resp_setor']} — {FICHA_EMPRESA_DADOS['tel_resp_setor']}<br>"
-                            f"<b style='color:#004D40;'>Responsável pelo contrato:</b> {FICHA_EMPRESA_DADOS['resp_contrato']} — {FICHA_EMPRESA_DADOS['email_contrato']}<br>"
-                            f"<b style='color:#004D40;'>Aprendiz:</b> {ep_nome}<br>"
-                            f"<b style='color:#004D40;'>Horário:</b> {ep_horario or 'A definir'}<br>"
-                            f"<b style='color:#004D40;'>Salário:</b> {ep_salario}"
-                            "</div>",
-                            unsafe_allow_html=True)
+                            # Preview dos dados fixos do hospital
+                            st.markdown(
+                                "<div style='background:#F8FAFB;border-radius:10px;padding:14px 18px;"
+                                "margin-top:4px;font-size:12px;color:#4A5568;line-height:1.8;'>"
+                                f"<b style='color:#004D40;'>Empresa:</b> {FICHA_EMPRESA_DADOS['empresa']}<br>"
+                                f"<b style='color:#004D40;'>Responsável no setor:</b> {FICHA_EMPRESA_DADOS['resp_setor']} — {FICHA_EMPRESA_DADOS['tel_resp_setor']}<br>"
+                                f"<b style='color:#004D40;'>Responsável pelo contrato:</b> {FICHA_EMPRESA_DADOS['resp_contrato']} — {FICHA_EMPRESA_DADOS['email_contrato']}"
+                                "</div>",
+                                unsafe_allow_html=True)
 
-                        st.write("")
-                        ef1, ef2 = st.columns(2)
-                        with ef1:
-                            # Baixar .docx preenchido
+                            st.write("")
+                            fb1, fb2, fb3 = st.columns(3)
+                            salvar_ep  = fb1.form_submit_button("SALVAR DADOS", use_container_width=True)
+                            baixar_ep  = fb2.form_submit_button("BAIXAR .DOCX", use_container_width=True)
+                            enviar_ep  = fb3.form_submit_button("ENVIAR PARA EPTOM", type="primary", use_container_width=True)
+
+                        # Ações fora do form
+                        if salvar_ep:
+                            func['eptom_nome_edit']    = ep_nome
+                            func['eptom_horario_edit'] = ep_horario
+                            func['eptom_salario_edit'] = ep_salario
+                            salvar_json()
+                            st.success("Dados salvos. Use ENVIAR PARA EPTOM quando quiser enviar.")
+
+                        if baixar_ep:
                             docx_bytes = gerar_ficha_eptom_docx(ep_nome, ep_horario, ep_salario)
                             if docx_bytes:
                                 st.download_button(
-                                    "Baixar Ficha Preenchida (.docx)",
+                                    "⬇ Clique aqui para baixar o arquivo",
                                     data=docx_bytes,
                                     file_name=f"Ficha_EPTOM_{ep_nome.replace(' ','_')}.docx",
                                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                     use_container_width=True,
                                     key=f"dl_eptom_{func['id']}")
-                        with ef2:
-                            if st.button("ENVIAR PARA EPTOM POR E-MAIL",
-                                         type="primary", use_container_width=True,
-                                         key=f"env_eptom_{func['id']}"):
-                                with st.spinner("Enviando ficha para a EPTOM..."):
-                                    ok_ep, msg_ep = enviar_ficha_eptom(ep_nome, ep_horario, ep_salario)
-                                if ok_ep:
-                                    func['eptom_ficha_enviada'] = True
-                                    salvar_json()
-                                    st.markdown(f"<div class='notif notif-ok'>{msg_ep}</div>",
-                                                unsafe_allow_html=True)
-                                else:
-                                    st.markdown(f"<div class='notif notif-warn'>{msg_ep}</div>",
-                                                unsafe_allow_html=True)
+
+                        if enviar_ep:
+                            with st.spinner("Enviando ficha para a EPTOM..."):
+                                ok_ep, msg_ep = enviar_ficha_eptom(ep_nome, ep_horario, ep_salario)
+                            if ok_ep:
+                                func['eptom_ficha_enviada'] = True
+                                func['eptom_nome_edit']    = ep_nome
+                                func['eptom_horario_edit'] = ep_horario
+                                func['eptom_salario_edit'] = ep_salario
+                                salvar_json()
+                                st.success(f"✅ {msg_ep}")
+                            else:
+                                st.error(msg_ep)
 
                         if func.get('eptom_ficha_enviada'):
                             st.markdown(
                                 "<div class='notif notif-ok' style='margin-top:10px;'>"
-                                "✅ Ficha já foi enviada para a EPTOM.</div>",
+                                "✅ Ficha já foi enviada para a EPTOM anteriormente.</div>",
                                 unsafe_allow_html=True)
 
         # ── GRID DE CARDS — estilo referência ────────────────────
