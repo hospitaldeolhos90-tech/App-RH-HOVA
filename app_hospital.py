@@ -4186,7 +4186,7 @@ with abas[8]:
                     st.markdown(
                         "<div style='font-size:10px;font-weight:800;color:#004D40;"
                         "letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;'>"
-                        "Reenviar E-mail de Admissão</div>", unsafe_allow_html=True)
+                        "📋 Reenviar Pedido de Documentos</div>", unsafe_allow_html=True)
 
                     _adm_ok      = func.get('email_admissao_enviado', False)
                     _eh_aprendiz = func.get('eptom', False) or func.get('setor','') == 'JOVEM APRENDIZ'
@@ -4194,20 +4194,13 @@ with abas[8]:
                     if _adm_ok:
                         st.markdown(
                             "<div class='notif notif-ok' style='margin-bottom:10px;'>"
-                            "✅ E-mail de admissão já foi enviado anteriormente.</div>",
-                            unsafe_allow_html=True)
-
-                    if _eh_aprendiz:
-                        st.markdown(
-                            "<div class='notif notif-info' style='margin-bottom:10px;font-size:12px;'>"
-                            "👶 <b>Jovem Aprendiz</b> — será enviado apenas o pedido de documentos. "
-                            "Data e horário de início são definidos pela EPTOM.</div>",
+                            "✅ Pedido de documentos já foi enviado anteriormente.</div>",
                             unsafe_allow_html=True)
 
                     with st.form(f"form_reenvio_{func['id']}"):
                         re1, re2 = st.columns(2)
                         re_email = re1.text_input(
-                            "E-mail da candidata:",
+                            "E-mail:",
                             value=func.get('email',''),
                             placeholder="email@exemplo.com",
                             key=f"re_email_{func['id']}")
@@ -4215,44 +4208,27 @@ with abas[8]:
                             "Prazo para documentos:",
                             value=datetime.date.today() + datetime.timedelta(days=5),
                             key=f"re_dl_{func['id']}")
-
-                        if not _eh_aprendiz:
-                            re3, re4 = st.columns(2)
-                            re_di = re3.date_input(
-                                "Data de início:",
-                                value=func.get('data_inicio_contrato') or datetime.date.today(),
-                                key=f"re_di_{func['id']}")
-                            re_hi = re4.time_input(
-                                "Horário de entrada:",
-                                value=func.get('hora_inicio_contrato') or datetime.time(8,0),
-                                key=f"re_hi_{func['id']}")
-                        else:
-                            re_di = None
-                            re_hi = None
-
                         reenviar_ok = st.form_submit_button(
-                            "REENVIAR E-MAIL DE ADMISSÃO",
+                            "REENVIAR PEDIDO DE DOCUMENTOS",
                             type="primary", use_container_width=True)
 
                     if reenviar_ok:
                         if not re_email.strip():
-                            st.error("Informe o e-mail da candidata.")
+                            st.error("Informe o e-mail.")
                         else:
-                            with st.spinner("Enviando e-mail de admissão..."):
+                            with st.spinner("Enviando..."):
                                 ok_re = send_email_admissao(
                                     re_email, func['nome'],
-                                    re_dl, re_di, re_hi,
+                                    re_dl, None, None,
                                     func.get('id',''),
                                     aprendiz=_eh_aprendiz)
                             if ok_re:
                                 func['email']                  = re_email.lower().strip()
                                 func['email_admissao_enviado'] = True
-                                if re_di: func['data_inicio_contrato'] = re_di
-                                if re_hi: func['hora_inicio_contrato'] = re_hi
                                 salvar_json()
-                                st.success(f"✅ E-mail de admissão reenviado para {re_email}")
+                                st.success(f"✅ Pedido de documentos reenviado para {re_email}")
                             else:
-                                st.error("Falha ao enviar. Verifique a conexão e tente novamente.")
+                                st.error("Falha ao enviar. Tente novamente.")
 
                 # ── TAB 2: DOCUMENTOS ────────────────────────────
                 with tab_docs:
