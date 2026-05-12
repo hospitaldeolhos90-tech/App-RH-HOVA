@@ -1430,11 +1430,11 @@ def novo_manual(nome, email_c, tel, setor):
 # E-mail de teste — troque por pessoal.expert@ntwdoctor.com.br quando confirmar
 EMAIL_CONTABILIDADE = "esterteixeiradepaula@gmail.com"
 
-def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str = "", cnpj: str = "") -> bytes:
-    """
-    Gera o .docx preenchido preservando 100% da formatação original da EPTOM.
-    Apenas insere texto nas células vazias da primeira linha de dados.
-    """
+def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str = "",
+                           cnpj: str = "", empresa: str = "", resp_setor: str = "",
+                           tel_setor: str = "", resp_contrato: str = "",
+                           email_contrato: str = "") -> bytes:
+    """Gera o .docx preenchido preservando 100% da formatação original da EPTOM."""
     try:
         from docx import Document
         from docx.shared import Pt
@@ -1501,12 +1501,12 @@ def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str =
             # [4] Resp.Contrato  [5] Email.Contrato  [6] (vazia)
             # [7] Nome Aprendiz  [8] Horário  [9] Salário
             valores = {
-                0: d["empresa"],
-                1: cnpj or d.get("cnpj", ""),
-                2: d["resp_setor"],
-                3: d["tel_resp_setor"],
-                4: d["resp_contrato"],
-                5: d["email_contrato"],
+                0: empresa     or d["empresa"],
+                1: cnpj        or d.get("cnpj",""),
+                2: resp_setor  or d["resp_setor"],
+                3: tel_setor   or d["tel_resp_setor"],
+                4: resp_contrato  or d["resp_contrato"],
+                5: email_contrato or d["email_contrato"],
                 6: "",
                 7: nome_aprendiz.title(),
                 8: horario or d["horario"],
@@ -1523,14 +1523,14 @@ def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str =
         print(f"Erro gerar ficha EPTOM: {e}")
         return b""
 
-def enviar_ficha_eptom(nome_aprendiz: str, horario: str = "", salario: str = "", cnpj: str = "") -> tuple[bool, str]:
+def enviar_ficha_eptom(nome_aprendiz: str, horario: str = "", salario: str = "", cnpj: str = "", empresa: str = "", resp_setor: str = "", tel_setor: str = "", resp_contrato: str = "", email_contrato: str = "") -> tuple[bool, str]:
     """Envia a ficha preenchida para a EPTOM por e-mail."""
     try:
         from email.mime.multipart import MIMEMultipart
         from email.mime.base      import MIMEBase
         from email                import encoders
 
-        docx_bytes = gerar_ficha_eptom_docx(nome_aprendiz, horario, salario, cnpj)
+        docx_bytes = gerar_ficha_eptom_docx(nome_aprendiz, horario, salario, cnpj, empresa, resp_setor, tel_setor, resp_contrato, email_contrato)
         if not docx_bytes:
             return False, "Erro ao gerar o arquivo .docx"
 
@@ -4091,6 +4091,64 @@ with abas[8]:
                         st.success(f"{func['nome']} desligado e movido para Histórico.")
                         st.rerun()
 
+                    # ── Reenviar e-mail de admissão ──────────────────
+                    st.markdown("<hr style='border:none;border-top:1px solid #E2E6EA;margin:20px 0 14px;'>",
+                                unsafe_allow_html=True)
+                    st.markdown(
+                        "<div style='font-size:10px;font-weight:800;color:#004D40;"
+                        "letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;'>"
+                        "Reenviar E-mail de Admissão</div>", unsafe_allow_html=True)
+
+                    _adm_ok = func.get('email_admissao_enviado', False)
+                    if _adm_ok:
+                        st.markdown(
+                            "<div class='notif notif-ok' style='margin-bottom:10px;'>"
+                            "✅ E-mail de admissão já foi enviado anteriormente.</div>",
+                            unsafe_allow_html=True)
+
+                    with st.form(f"form_reenvio_{func['id']}"):
+                        re1, re2 = st.columns(2)
+                        re_email = re1.text_input(
+                            "E-mail da candidata:",
+                            value=func.get('email',''),
+                            placeholder="email@exemplo.com",
+                            key=f"re_email_{func['id']}")
+                        re_dl = re2.date_input(
+                            "Prazo para documentos:",
+                            value=datetime.date.today() + datetime.timedelta(days=5),
+                            key=f"re_dl_{func['id']}")
+                        re3, re4 = st.columns(2)
+                        re_di = re3.date_input(
+                            "Data de início:",
+                            value=func.get('data_inicio_contrato') or datetime.date(2026,5,18),
+                            key=f"re_di_{func['id']}")
+                        re_hi = re4.time_input(
+                            "Horário de entrada:",
+                            value=func.get('hora_inicio_contrato') or datetime.time(8,0),
+                            key=f"re_hi_{func['id']}")
+                        reenviar_ok = st.form_submit_button(
+                            "REENVIAR E-MAIL DE ADMISSÃO",
+                            type="primary", use_container_width=True)
+
+                    if reenviar_ok:
+                        if not re_email.strip():
+                            st.error("Informe o e-mail da candidata.")
+                        else:
+                            with st.spinner("Enviando e-mail de admissão..."):
+                                ok_re = send_email_admissao(
+                                    re_email, func['nome'],
+                                    re_dl, re_di, re_hi,
+                                    func.get('id',''))
+                            if ok_re:
+                                func['email']                  = re_email.lower().strip()
+                                func['data_inicio_contrato']   = re_di
+                                func['hora_inicio_contrato']   = re_hi
+                                func['email_admissao_enviado'] = True
+                                salvar_json()
+                                st.success(f"✅ E-mail de admissão reenviado para {re_email}")
+                            else:
+                                st.error("Falha ao enviar. Verifique a conexão e tente novamente.")
+
                 # ── TAB 2: DOCUMENTOS ────────────────────────────
                 with tab_docs:
                     # ── Botão de varredura automática ─────────────
@@ -4332,30 +4390,34 @@ with abas[8]:
                         # ── Apenas campos variáveis ──
                         with st.form(key=f"form_eptom_{func['id']}"):
                             ec1, ec2 = st.columns(2)
-                            ep_nome    = ec1.text_input(
-                                "Nome completo do aprendiz: *",
-                                value=func.get('eptom_nome_edit', func.get('nome','').title()),
-                                key=f"ep_nome_{func['id']}")
-                            ep_horario = ec2.text_input(
-                                "Horário de trabalho:",
-                                value=func.get('eptom_horario_edit', func.get('carga_horaria','')),
-                                placeholder="Ex: 13h às 17h, seg a sex",
-                                key=f"ep_hor_{func['id']}")
-                            ep_salario = st.text_input(
-                                "Salário mensal: *",
-                                value=func.get('eptom_salario_edit', d['salario']),
-                                key=f"ep_sal_{func['id']}")
+                            ep_empresa  = ec1.text_input("Empresa:", value=func.get('eptom_empresa_edit', d['empresa']), key=f"ep_emp_{func['id']}")
+                            ep_cnpj     = ec2.text_input("CNPJ:", value=func.get('eptom_cnpj_edit', d['cnpj']), key=f"ep_cnpj_{func['id']}")
+                            ec3, ec4 = st.columns(2)
+                            ep_resp_set = ec3.text_input("Resp. no Setor:", value=func.get('eptom_resp_setor_edit', d['resp_setor']), key=f"ep_rset_{func['id']}")
+                            ep_tel_set  = ec4.text_input("Tel. Resp. Setor:", value=func.get('eptom_tel_setor_edit', d['tel_resp_setor']), key=f"ep_tset_{func['id']}")
+                            ec5, ec6 = st.columns(2)
+                            ep_resp_con = ec5.text_input("Resp. pelo Contrato:", value=func.get('eptom_resp_contrato_edit', d['resp_contrato']), key=f"ep_rcon_{func['id']}")
+                            ep_email_con= ec6.text_input("E-mail Resp. Contrato:", value=func.get('eptom_email_contrato_edit', d['email_contrato']), key=f"ep_econ_{func['id']}")
+                            ec7, ec8, ec9 = st.columns(3)
+                            ep_nome     = ec7.text_input("Nome do Aprendiz: *", value=func.get('eptom_nome_edit', func.get('nome','').title()), key=f"ep_nome_{func['id']}")
+                            ep_horario  = ec8.text_input("Horário:", value=func.get('eptom_horario_edit', func.get('carga_horaria','')), placeholder="Ex: 13h às 17h", key=f"ep_hor_{func['id']}")
+                            ep_salario  = ec9.text_input("Salário: *", value=func.get('eptom_salario_edit', d['salario']), key=f"ep_sal_{func['id']}")
 
                             fb1, fb2, fb3 = st.columns(3)
                             salvar_ep = fb1.form_submit_button("SALVAR", use_container_width=True)
                             baixar_ep = fb2.form_submit_button("📄 BAIXAR .DOCX", use_container_width=True)
-                            enviar_ep = fb3.form_submit_button("✉ ENVIAR PARA EPTOM",
-                                                               type="primary", use_container_width=True)
+                            enviar_ep = fb3.form_submit_button("✉ ENVIAR PARA EPTOM", type="primary", use_container_width=True)
 
                         # ── Pré-visualização HTML fiel ──
-                        _nome_ep = func.get('eptom_nome_edit', func.get('nome','').title())
-                        _hor_ep  = func.get('eptom_horario_edit', func.get('carga_horaria','—'))
-                        _sal_ep  = func.get('eptom_salario_edit', d['salario'])
+                        _nome_ep    = func.get('eptom_nome_edit', func.get('nome','').title())
+                        _hor_ep     = func.get('eptom_horario_edit', func.get('carga_horaria','—'))
+                        _sal_ep     = func.get('eptom_salario_edit', d['salario'])
+                        _empresa_ep = func.get('eptom_empresa_edit', d['empresa'])
+                        _cnpj_ep    = func.get('eptom_cnpj_edit', d['cnpj'])
+                        _rset_ep    = func.get('eptom_resp_setor_edit', d['resp_setor'])
+                        _tset_ep    = func.get('eptom_tel_setor_edit', d['tel_resp_setor'])
+                        _rcon_ep    = func.get('eptom_resp_contrato_edit', d['resp_contrato'])
+                        _econ_ep    = func.get('eptom_email_contrato_edit', d['email_contrato'])
                         _meses   = ['janeiro','fevereiro','março','abril','maio','junho',
                                     'julho','agosto','setembro','outubro','novembro','dezembro']
                         _hj      = datetime.date.today()
@@ -4394,12 +4456,12 @@ with abas[8]:
     </thead>
     <tbody>
       <tr style="background:#F0FAF8;">
-        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{d['empresa']}</td>
-        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{d['cnpj']}</td>
-        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{d['resp_setor']}</td>
-        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{d['tel_resp_setor']}</td>
-        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{d['resp_contrato']}</td>
-        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{d['email_contrato']}</td>
+        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{_empresa_ep}</td>
+        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{_cnpj_ep}</td>
+        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{_rset_ep}</td>
+        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{_tset_ep}</td>
+        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{_rcon_ep}</td>
+        <td style="padding:7px 9px;border:1px solid #CBD5E0;">{_econ_ep}</td>
         <td style="padding:7px 9px;border:1px solid #CBD5E0;font-weight:700;color:#003329;">{_nome_ep}</td>
         <td style="padding:7px 9px;border:1px solid #CBD5E0;">{_hor_ep}</td>
         <td style="padding:7px 9px;border:1px solid #CBD5E0;">{_sal_ep}</td>
@@ -4413,21 +4475,28 @@ with abas[8]:
 </div>
 """, unsafe_allow_html=True)
 
-                        # ── Ações ──
+                        def _salvar_eptom_fields():
+                            func['eptom_nome_edit']             = ep_nome
+                            func['eptom_horario_edit']          = ep_horario
+                            func['eptom_salario_edit']          = ep_salario
+                            func['eptom_empresa_edit']          = ep_empresa
+                            func['eptom_cnpj_edit']             = ep_cnpj
+                            func['eptom_resp_setor_edit']       = ep_resp_set
+                            func['eptom_tel_setor_edit']        = ep_tel_set
+                            func['eptom_resp_contrato_edit']    = ep_resp_con
+                            func['eptom_email_contrato_edit']   = ep_email_con
+
                         if salvar_ep:
-                            func['eptom_nome_edit']    = ep_nome
-                            func['eptom_horario_edit'] = ep_horario
-                            func['eptom_salario_edit'] = ep_salario
+                            _salvar_eptom_fields()
                             salvar_json()
                             st.success("Dados salvos.")
                             st.rerun()
 
                         if baixar_ep:
-                            func['eptom_nome_edit']    = ep_nome
-                            func['eptom_horario_edit'] = ep_horario
-                            func['eptom_salario_edit'] = ep_salario
-                            _cnpj = d['cnpj']
-                            docx_bytes = gerar_ficha_eptom_docx(ep_nome, ep_horario, ep_salario, _cnpj)
+                            _salvar_eptom_fields()
+                            docx_bytes = gerar_ficha_eptom_docx(
+                                ep_nome, ep_horario, ep_salario, ep_cnpj,
+                                ep_empresa, ep_resp_set, ep_tel_set, ep_resp_con, ep_email_con)
                             if docx_bytes:
                                 st.download_button(
                                     "⬇ Baixar Ficha EPTOM preenchida (.docx)",
@@ -4436,17 +4505,16 @@ with abas[8]:
                                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                     use_container_width=True,
                                     key=f"dl_eptom_{func['id']}")
-                                st.info("Abra o arquivo no Word para conferir antes de enviar.")
+                                st.info("Abra no Word para conferir antes de enviar.")
                             else:
                                 st.error("Erro ao gerar o arquivo.")
 
                         if enviar_ep:
-                            func['eptom_nome_edit']    = ep_nome
-                            func['eptom_horario_edit'] = ep_horario
-                            func['eptom_salario_edit'] = ep_salario
-                            _cnpj = d['cnpj']
+                            _salvar_eptom_fields()
                             with st.spinner("Enviando ficha para a EPTOM..."):
-                                ok_ep, msg_ep = enviar_ficha_eptom(ep_nome, ep_horario, ep_salario, _cnpj)
+                                ok_ep, msg_ep = enviar_ficha_eptom(
+                                    ep_nome, ep_horario, ep_salario, ep_cnpj,
+                                    ep_empresa, ep_resp_set, ep_tel_set, ep_resp_con, ep_email_con)
                             if ok_ep:
                                 func['eptom_ficha_enviada'] = True
                                 salvar_json()
