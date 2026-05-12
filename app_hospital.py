@@ -1570,8 +1570,7 @@ def _assunto_docs(nome: str, cand_id: str) -> str:
     nome_limpo = re.sub(r'[^A-Za-z0-9]', '', nome.replace(' ', '_'))
     return f"{ASSUNTO_DOCS_PREFIX}-{nome_limpo}-{cand_id[:8]}"
 
-def email_admissao(nome, dl, di, hi, cand_id=""):
-    assunto_resposta = _assunto_docs(nome, cand_id)
+def email_admissao(nome, dl, di=None, hi=None, cand_id=""):
     return f"""Prezada(o) {nome.title()}, bom dia!
 
 Aqui é a equipe de RH do Hospital de Olhos Vale do Aço.
@@ -1579,7 +1578,7 @@ Aqui é a equipe de RH do Hospital de Olhos Vale do Aço.
 Temos o prazer de informar que você foi selecionada(o) para integrar nossa equipe.
 Seja muito bem-vinda(o)!
 
-Para continuidade do processo de admissão, precisamos que você nos envie os documentos
+Para darmos continuidade ao processo, precisamos que você nos envie os documentos
 listados abaixo até o dia {dl.strftime('%d/%m/%Y')}.
 
 COMO ENVIAR:
@@ -1600,11 +1599,8 @@ Documentos necessários:
 
 A foto 3x4 deverá ser entregue presencialmente.
 
-Seu inicio sera no dia {di.strftime('%d/%m/%Y')} as {hi.strftime('%H:%M')}.
-
-Caso necessite de vale-transporte, informe a(s) linha(s) utilizada(s).
-
-Ficamos à disposição para qualquer dúvida.
+A data de início será informada em breve!
+Qualquer dúvida, estamos à disposição.
 
 Atenciosamente,
 Equipe de RH — Hospital de Olhos Vale do Aço"""
