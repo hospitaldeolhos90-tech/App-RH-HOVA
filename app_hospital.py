@@ -3311,71 +3311,68 @@ with abas[6]:
                     st.markdown(f'<a href="https://wa.me/{tel}?text={urllib.parse.quote(mwa)}" target="_blank" class="wa-btn">Confirmar via WhatsApp</a>', unsafe_allow_html=True)
 
                 if st.session_state.contratar_foco == c['id']:
-                    tem_email_c  = bool(c.get('email','').strip())
-                    eh_aprendiz  = c.get('setor','') == 'JOVEM APRENDIZ'
+                    tem_email_c = bool(c.get('email','').strip())
+                    eh_aprendiz = c.get('setor','') == 'JOVEM APRENDIZ'
 
-                    st.caption("DADOS DE ADMISSÃO")
+                    st.markdown(
+                        "<div class='notif notif-info' style='text-align:left;font-size:12px;'>"
+                        "📋 <b>Passo 1 de 2</b> — Envio do pedido de documentos. "
+                        "Data de início e horário serão definidos após o recebimento dos docs, "
+                        "no dossiê do colaborador.</div>",
+                        unsafe_allow_html=True)
 
-                    if eh_aprendiz:
-                        # ── Jovem Aprendiz: horário definido pela EPTOM, data informada aqui ──
-                        st.markdown(
-                            "<div class='notif notif-info' style='text-align:left;font-size:12px;'>"
-                            "👶 <b>Jovem Aprendiz</b> — O horário de trabalho é definido pela "
-                            "<b>EPTOM</b>. Informe a data de início após alinhamento com a EPTOM.</div>",
-                            unsafe_allow_html=True)
-                        cdl, cdi = st.columns(2)
-                        dl = cdl.date_input("Prazo documentos:", key=f"dl_{c['id']}")
-                        di = cdi.date_input("Data de início:", value=datetime.date(2026, 5, 18), key=f"di_{c['id']}")
-                        hi = None  # horário definido pela EPTOM
-                        tn = st.text_input("WhatsApp (só números):", value=tel, key=f"wa_{c['id']}")
-                    else:
-                        cdl, cdi = st.columns(2)
-                        dl = cdl.date_input("Prazo documentos:", key=f"dl_{c['id']}")
-                        di = cdi.date_input("Data de início:",   key=f"di_{c['id']}")
-                        hi = st.time_input("Horário de entrada:", datetime.time(8,0), key=f"hi_{c['id']}")
-                        tn = st.text_input("WhatsApp (só números):", value=tel, key=f"wa_{c['id']}")
+                    st.caption("PRAZO PARA ENTREGA DOS DOCUMENTOS")
+                    dl = st.date_input(
+                        "", value=datetime.date.today() + datetime.timedelta(days=5),
+                        key=f"dl_{c['id']}", label_visibility="collapsed")
 
                     if not tem_email_c:
+                        tn = st.text_input("WhatsApp (só números):", value=tel, key=f"wa_{c['id']}")
                         msg_adm_wa = (
                             f"Olá! 😊\n\n"
                             f"Aqui é o RH do *Hospital de Olhos Vale do Aço*.\n\n"
-                            f"Temos o prazer de informar que você foi *selecionado(a)* para integrar nossa equipe! 🎉\n\n"
-                            + (f"Seu início será em *{di.strftime('%d/%m/%Y')}* às *{hi.strftime('%H:%M')}*.\n\n" if di and hi else
-                               "A data e horário de início serão informados em breve pela EPTOM.\n\n")
-                            + f"Para a admissão, precisamos que você envie os documentos abaixo até *{dl.strftime('%d/%m/%Y')}* "
+                            f"Temos o prazer de informar que você foi *selecionado(a)* "
+                            f"para integrar nossa equipe! 🎉\n\n"
+                            f"Para darmos continuidade, precisamos que você envie os "
+                            f"documentos abaixo até *{dl.strftime('%d/%m/%Y')}* "
                             f"pelo e-mail: *rh@holhosvaledoaco.com.br*\n\n"
                             f"📋 *Documentos necessários:*\n"
-                            f"• RG\n• CPF\n• Comprovante de residência\n• Cartão do PIS\n"
-                            f"• Diploma (se houver)\n• Cartão de vacinação\n"
-                            f"• Certidões (casamento/filhos, se houver)\n\n"
-                            f"A foto 3x4 entregar presencialmente.\n\n"
+                            + ("• RG\n• CPF\n• Comprovante de residência\n• Cartão do PIS\n"
+                               "• Certidão de nascimento\n• Comprovante de matrícula escolar\n"
+                               "• Cartão de vacinação\n• Certidões (filhos, se houver)\n"
+                               if eh_aprendiz else
+                               "• RG\n• CPF\n• Comprovante de residência\n• Cartão do PIS\n"
+                               "• Diploma (se houver)\n• Cartão de vacinação\n"
+                               "• Certidões (casamento/filhos, se houver)\n")
+                            + f"\nA foto 3x4 entregar presencialmente.\n\n"
+                            f"A data de início será informada em breve!\n\n"
                             f"Qualquer dúvida, estamos à disposição! 🤝\n"
                             f"— Equipe de RH — HOVA"
                         )
                         st.markdown(
                             "<div class='notif notif-info' style='font-size:12px;text-align:left;'>"
-                            "📱 Sem e-mail — instruções serão enviadas via WhatsApp.</div>",
+                            "📱 Sem e-mail — pedido será enviado via WhatsApp.</div>",
                             unsafe_allow_html=True)
 
                     cx, cok = st.columns(2)
                     with cx:
-                        if st.button("CANCELAR", key=f"cx_{c['id']}", type="secondary", use_container_width=True):
+                        if st.button("CANCELAR", key=f"cx_{c['id']}",
+                                     type="secondary", use_container_width=True):
                             st.session_state.contratar_foco = None
                             st.rerun()
                     with cok:
                         if tem_email_c:
-                            if st.button("CONFIRMAR", key=f"cok_{c['id']}", type="primary", use_container_width=True):
-                                with st.spinner("Enviando e-mail de admissão..."):
+                            if st.button("CONFIRMAR E ENVIAR DOCS", key=f"cok_{c['id']}",
+                                         type="primary", use_container_width=True):
+                                with st.spinner("Enviando pedido de documentos..."):
                                     ok = send_email_admissao(
                                         c['email'], c['nome'], dl,
-                                        di or datetime.date.today(),
-                                        hi or datetime.time(8,0),
-                                        c.get('id','')
-                                    )
+                                        None, None,
+                                        c.get('id',''),
+                                        aprendiz=eh_aprendiz)
                                 c.update({
-                                    'data_inicio_contrato':   di,
-                                    'hora_inicio_contrato':   hi,
-                                    'telefone': tn,
+                                    'data_inicio_contrato':   None,
+                                    'hora_inicio_contrato':   None,
                                     'email_admissao_enviado': ok,
                                     'eptom': eh_aprendiz,
                                 })
@@ -3385,7 +3382,7 @@ with abas[6]:
                                 salvar_json()
                                 st.session_state.sync_msg = {
                                     'tipo': 'ok' if ok else 'warn',
-                                    'texto': f"{c['nome']} contratado(a). E-mail de admissão enviado." if ok
+                                    'texto': f"{c['nome']} contratado(a). Pedido de docs enviado." if ok
                                              else f"{c['nome']} movido para Contratados. E-mail pendente."
                                 }
                                 time.sleep(1)
@@ -3396,16 +3393,17 @@ with abas[6]:
                                 url_adm_wa = f"https://wa.me/55{tel_limpo}?text={urllib.parse.quote(msg_adm_wa)}"
                                 st.markdown(
                                     f'<a href="{url_adm_wa}" target="_blank" class="wa-btn" '
-                                    f'style="display:block;text-align:center;height:48px;line-height:48px;'
-                                    f'border-radius:9px;font-size:11px;font-weight:700;letter-spacing:1px;">'
+                                    f'style="display:block;text-align:center;height:48px;'
+                                    f'line-height:48px;border-radius:9px;font-size:11px;'
+                                    f'font-weight:700;letter-spacing:1px;">'
                                     f'ENVIAR VIA WHATSAPP</a>',
                                     unsafe_allow_html=True)
                             if st.button("CONFIRMAR CONTRATAÇÃO ✓", key=f"cok_{c['id']}",
                                          type="primary", use_container_width=True):
                                 c.update({
-                                    'data_inicio_contrato':   di,
-                                    'hora_inicio_contrato':   hi,
-                                    'telefone': ''.join(filter(str.isdigit, tn)),
+                                    'data_inicio_contrato':   None,
+                                    'hora_inicio_contrato':   None,
+                                    'telefone': ''.join(filter(str.isdigit, tn)) if not tem_email_c else tel,
                                     'email_admissao_enviado': False,
                                     'eptom': eh_aprendiz,
                                 })
