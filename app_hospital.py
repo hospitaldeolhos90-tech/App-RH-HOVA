@@ -1609,10 +1609,51 @@ Ficamos à disposição para qualquer dúvida.
 Atenciosamente,
 Equipe de RH — Hospital de Olhos Vale do Aço"""
 
-def send_email_admissao(dest: str, nome: str, dl, di, hi, cand_id: str) -> bool:
-    """Envia o e-mail de admissão com assunto padronizado para rastreamento."""
+def email_admissao_aprendiz(nome, dl, cand_id=""):
+    """E-mail de admissão para Jovem Aprendiz — sem data/horário de início (definidos pela EPTOM)."""
+    return f"""Prezada(o) {nome.title()}, bom dia!
+
+Aqui é a equipe de RH do Hospital de Olhos Vale do Aço.
+
+Temos o prazer de informar que você foi selecionada(o) para o Programa de Jovem Aprendiz!
+Seja muito bem-vinda(o)!
+
+Para darmos continuidade ao processo, precisamos que você nos envie os documentos
+listados abaixo até o dia {dl.strftime('%d/%m/%Y')}.
+
+COMO ENVIAR:
+Responda este mesmo e-mail com os documentos em PDF anexados.
+Nomeie cada arquivo com o nome do documento. Ex: RG.pdf, CPF.pdf
+O assunto do e-mail ja esta correto — nao altere.
+
+Documentos necessários:
+  - RG
+  - CPF
+  - Comprovante de residência
+  - Cartão do PIS
+  - Certidão de nascimento
+  - Comprovante de matrícula escolar atualizado
+  - Cartão de vacinação atualizado
+  - Certidão de nascimento dos filhos + CPF (se houver)
+  - Declaração escolar dos filhos (se houver)
+
+A foto 3x4 deverá ser entregue presencialmente.
+
+A data de início e o horário de trabalho serão informados em breve pela EPTOM.
+Qualquer dúvida, estamos à disposição!
+
+Atenciosamente,
+Equipe de RH — Hospital de Olhos Vale do Aço"""
+
+def send_email_admissao(dest: str, nome: str, dl, di, hi, cand_id: str,
+                        aprendiz: bool = False) -> bool:
+    """Envia o e-mail de admissão. Para aprendiz, usa mensagem sem data/hora de início."""
     try:
-        m = MIMEText(email_admissao(nome, dl, di, hi, cand_id), 'plain', 'utf-8')
+        if aprendiz:
+            corpo = email_admissao_aprendiz(nome, dl, cand_id)
+        else:
+            corpo = email_admissao(nome, dl, di, hi, cand_id)
+        m = MIMEText(corpo, 'plain', 'utf-8')
         m['Subject'] = _assunto_docs(nome, cand_id)
         m['From']    = EMAIL_CONTA
         m['To']      = dest
@@ -4099,11 +4140,20 @@ with abas[8]:
                         "letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;'>"
                         "Reenviar E-mail de Admissão</div>", unsafe_allow_html=True)
 
-                    _adm_ok = func.get('email_admissao_enviado', False)
+                    _adm_ok      = func.get('email_admissao_enviado', False)
+                    _eh_aprendiz = func.get('eptom', False) or func.get('setor','') == 'JOVEM APRENDIZ'
+
                     if _adm_ok:
                         st.markdown(
                             "<div class='notif notif-ok' style='margin-bottom:10px;'>"
                             "✅ E-mail de admissão já foi enviado anteriormente.</div>",
+                            unsafe_allow_html=True)
+
+                    if _eh_aprendiz:
+                        st.markdown(
+                            "<div class='notif notif-info' style='margin-bottom:10px;font-size:12px;'>"
+                            "👶 <b>Jovem Aprendiz</b> — será enviado apenas o pedido de documentos. "
+                            "Data e horário de início são definidos pela EPTOM.</div>",
                             unsafe_allow_html=True)
 
                     with st.form(f"form_reenvio_{func['id']}"):
@@ -4117,15 +4167,21 @@ with abas[8]:
                             "Prazo para documentos:",
                             value=datetime.date.today() + datetime.timedelta(days=5),
                             key=f"re_dl_{func['id']}")
-                        re3, re4 = st.columns(2)
-                        re_di = re3.date_input(
-                            "Data de início:",
-                            value=func.get('data_inicio_contrato') or datetime.date(2026,5,18),
-                            key=f"re_di_{func['id']}")
-                        re_hi = re4.time_input(
-                            "Horário de entrada:",
-                            value=func.get('hora_inicio_contrato') or datetime.time(8,0),
-                            key=f"re_hi_{func['id']}")
+
+                        if not _eh_aprendiz:
+                            re3, re4 = st.columns(2)
+                            re_di = re3.date_input(
+                                "Data de início:",
+                                value=func.get('data_inicio_contrato') or datetime.date.today(),
+                                key=f"re_di_{func['id']}")
+                            re_hi = re4.time_input(
+                                "Horário de entrada:",
+                                value=func.get('hora_inicio_contrato') or datetime.time(8,0),
+                                key=f"re_hi_{func['id']}")
+                        else:
+                            re_di = None
+                            re_hi = None
+
                         reenviar_ok = st.form_submit_button(
                             "REENVIAR E-MAIL DE ADMISSÃO",
                             type="primary", use_container_width=True)
@@ -4138,12 +4194,13 @@ with abas[8]:
                                 ok_re = send_email_admissao(
                                     re_email, func['nome'],
                                     re_dl, re_di, re_hi,
-                                    func.get('id',''))
+                                    func.get('id',''),
+                                    aprendiz=_eh_aprendiz)
                             if ok_re:
                                 func['email']                  = re_email.lower().strip()
-                                func['data_inicio_contrato']   = re_di
-                                func['hora_inicio_contrato']   = re_hi
                                 func['email_admissao_enviado'] = True
+                                if re_di: func['data_inicio_contrato'] = re_di
+                                if re_hi: func['hora_inicio_contrato'] = re_hi
                                 salvar_json()
                                 st.success(f"✅ E-mail de admissão reenviado para {re_email}")
                             else:
