@@ -3478,15 +3478,18 @@ with abas[6]:
                             "Mensagem que será enviada:",
                             value=(
                                 f"Olá {c['nome'].title()}, tudo bem?\n\n"
-                                f"Agradecemos muito sua presença na entrevista e o tempo que "
-                                f"dedicou ao nosso processo seletivo.\n\n"
-                                f"No momento não temos uma vaga disponível compatível com seu "
-                                f"perfil, mas seu currículo ficará em nossa base de dados e "
-                                f"entraremos em contato assim que surgir uma nova oportunidade.\n\n"
-                                f"Muito obrigada e sucesso sempre!\n\n"
+                                f"Gostaríamos de agradecer imensamente pela sua presença em nossa "
+                                f"entrevista e por todo o tempo e dedicação que você investiu no "
+                                f"nosso processo seletivo. Foi muito bom te conhecer!\n\n"
+                                f"No momento não temos uma vaga disponível na sua área, mas seu "
+                                f"currículo ficará guardado em nossa base de dados e entraremos "
+                                f"em contato assim que surgir uma nova oportunidade.\n\n"
+                                f"Desejamos muito sucesso na sua jornada profissional e que novas "
+                                f"portas se abram para você em breve!\n\n"
+                                f"Muito obrigada e até breve!\n\n"
                                 f"Equipe de RH — Hospital de Olhos Vale do Aço"
                             ),
-                            height=220, key=f"msg_nc_ag_{c['id']}")
+                            height=260, key=f"msg_nc_ag_{c['id']}")
                         nc1, nc2 = st.columns(2)
                         with nc1:
                             if st.button("Cancelar", key=f"nc_ag_canc_{c['id']}",
