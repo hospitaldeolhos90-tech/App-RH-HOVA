@@ -3447,18 +3447,65 @@ with abas[6]:
                             st.rerun()
 
                 else:
-                    be1, be2 = st.columns(2)
+                    be1, be2, be3 = st.columns(3)
                     with be1:
                         if st.button("EDITAR", key=f"ed_{c['id']}",
                                      use_container_width=True):
                             st.session_state['editar_agendado'] = c['id']
                             st.rerun()
                     with be2:
+                        if st.button("NÃO CONTRATAR", key=f"nc_ag_{c['id']}",
+                                     type="secondary", use_container_width=True):
+                            st.session_state['nc_agendado_foco'] = c['id']
+                            st.rerun()
+                    with be3:
                         if st.button("CONTRATAR", key=f"ct_{c['id']}",
                                      type="primary", use_container_width=True):
                             st.session_state.contratar_foco = c['id']
                             st.rerun()
-            st.markdown("</div>", unsafe_allow_html=True)
+
+                    # ── Modal Não Contratar ──
+                    if st.session_state.get('nc_agendado_foco') == c['id']:
+                        st.markdown(
+                            "<div style='background:#FFFAF8;border:1.5px solid #E5BCBC;"
+                            "border-radius:14px;padding:22px 26px;margin-top:8px;'>",
+                            unsafe_allow_html=True)
+                        st.markdown(
+                            "<div style='font-size:13px;font-weight:700;color:#9B2C2C;"
+                            "margin-bottom:14px;'>Confirmar — Não Contratar</div>",
+                            unsafe_allow_html=True)
+                        msg_nc_ag = st.text_area(
+                            "Mensagem que será enviada:",
+                            value=(
+                                f"Olá {c['nome'].title()}, tudo bem?\n\n"
+                                f"Agradecemos muito sua presença na entrevista e o tempo que "
+                                f"dedicou ao nosso processo seletivo.\n\n"
+                                f"No momento não temos uma vaga disponível compatível com seu "
+                                f"perfil, mas seu currículo ficará em nossa base de dados e "
+                                f"entraremos em contato assim que surgir uma nova oportunidade.\n\n"
+                                f"Muito obrigada e sucesso sempre!\n\n"
+                                f"Equipe de RH — Hospital de Olhos Vale do Aço"
+                            ),
+                            height=220, key=f"msg_nc_ag_{c['id']}")
+                        nc1, nc2 = st.columns(2)
+                        with nc1:
+                            if st.button("Cancelar", key=f"nc_ag_canc_{c['id']}",
+                                         use_container_width=True):
+                                st.session_state['nc_agendado_foco'] = None
+                                st.rerun()
+                        with nc2:
+                            if st.button("CONFIRMAR E ENVIAR", key=f"nc_ag_env_{c['id']}",
+                                         type="primary", use_container_width=True):
+                                if c.get('email','').strip():
+                                    with st.spinner("Enviando mensagem..."):
+                                        send_email(c['email'],
+                                                   "Hospital de Olhos Vale do Aço — Processo Seletivo",
+                                                   msg_nc_ag)
+                                st.session_state.agendados.remove(c)
+                                st.session_state['nc_agendado_foco'] = None
+                                salvar_json()
+                                st.rerun()
+                        st.markdown("</div>", unsafe_allow_html=True)
 
 # ── ABA 7: AGUARDANDO RETORNO ─────────────
 with abas[7]:
