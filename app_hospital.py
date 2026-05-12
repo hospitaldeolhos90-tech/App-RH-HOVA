@@ -4179,10 +4179,12 @@ with abas[8]:
                     # ── Reenviar e-mail de admissão ──────────────────
                     st.markdown("<hr style='border:none;border-top:1px solid #E2E6EA;margin:20px 0 14px;'>",
                                 unsafe_allow_html=True)
+
+                    # ── PASSO 1: Pedido de documentos ────────────────
                     st.markdown(
                         "<div style='font-size:10px;font-weight:800;color:#004D40;"
                         "letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;'>"
-                        "📋 Reenviar Pedido de Documentos</div>", unsafe_allow_html=True)
+                        "📋 Passo 1 — Pedido de Documentos</div>", unsafe_allow_html=True)
 
                     _adm_ok      = func.get('email_admissao_enviado', False)
                     _eh_aprendiz = func.get('eptom', False) or func.get('setor','') == 'JOVEM APRENDIZ'
@@ -4190,7 +4192,7 @@ with abas[8]:
                     if _adm_ok:
                         st.markdown(
                             "<div class='notif notif-ok' style='margin-bottom:10px;'>"
-                            "✅ Pedido de documentos já foi enviado anteriormente.</div>",
+                            "✅ Pedido de documentos já foi enviado.</div>",
                             unsafe_allow_html=True)
 
                     with st.form(f"form_reenvio_{func['id']}"):
@@ -4205,7 +4207,7 @@ with abas[8]:
                             value=datetime.date.today() + datetime.timedelta(days=5),
                             key=f"re_dl_{func['id']}")
                         reenviar_ok = st.form_submit_button(
-                            "REENVIAR PEDIDO DE DOCUMENTOS",
+                            "ENVIAR PEDIDO DE DOCUMENTOS",
                             type="primary", use_container_width=True)
 
                     if reenviar_ok:
@@ -4222,7 +4224,114 @@ with abas[8]:
                                 func['email']                  = re_email.lower().strip()
                                 func['email_admissao_enviado'] = True
                                 salvar_json()
-                                st.success(f"✅ Pedido de documentos reenviado para {re_email}")
+                                st.success(f"✅ Pedido de documentos enviado para {re_email}")
+                            else:
+                                st.error("Falha ao enviar. Tente novamente.")
+
+                    # ── PASSO 2: Confirmação de início ───────────────
+                    st.markdown("<hr style='border:none;border-top:1px solid #E2E6EA;margin:20px 0 14px;'>",
+                                unsafe_allow_html=True)
+                    st.markdown(
+                        "<div style='font-size:10px;font-weight:800;color:#004D40;"
+                        "letter-spacing:2px;text-transform:uppercase;margin-bottom:4px;'>"
+                        "🗓 Passo 2 — Confirmar Data de Início</div>"
+                        "<div style='font-size:11px;color:#9AA5B4;margin-bottom:12px;'>"
+                        "Enviar após receber os documentos e alinhar com a contabilidade.</div>",
+                        unsafe_allow_html=True)
+
+                    _inicio_ok = func.get('email_inicio_enviado', False)
+                    if _inicio_ok:
+                        st.markdown(
+                            "<div class='notif notif-ok' style='margin-bottom:10px;'>"
+                            "✅ E-mail de início já foi enviado.</div>",
+                            unsafe_allow_html=True)
+
+                    with st.form(f"form_inicio_{func['id']}"):
+                        fi1, fi2 = st.columns(2)
+                        fi_email = fi1.text_input(
+                            "E-mail:",
+                            value=func.get('email',''),
+                            key=f"fi_email_{func['id']}")
+                        fi_di = fi2.date_input(
+                            "Data de início:",
+                            value=func.get('data_inicio_contrato') or datetime.date.today(),
+                            key=f"fi_di_{func['id']}")
+
+                        if not _eh_aprendiz:
+                            fi3, fi4 = st.columns(2)
+                            fi_hi = fi3.time_input(
+                                "Horário de entrada:",
+                                value=func.get('hora_inicio_contrato') or datetime.time(8,0),
+                                key=f"fi_hi_{func['id']}")
+                            fi_carga = fi4.text_input(
+                                "Carga horária:",
+                                value=func.get('carga_horaria',''),
+                                placeholder="Ex: 44h semanais",
+                                key=f"fi_carga_{func['id']}")
+                        else:
+                            fi_hi    = None
+                            fi_carga = func.get('carga_horaria','')
+
+                        fi_vt = st.checkbox(
+                            "Utiliza Vale Transporte",
+                            value=func.get('vale_transporte', False),
+                            key=f"fi_vt_{func['id']}")
+                        fi_linhas = st.text_input(
+                            "Linhas de ônibus (se VT):",
+                            value=func.get('linhas_onibus',''),
+                            placeholder="Ex: 201, 405",
+                            disabled=not fi_vt,
+                            key=f"fi_linhas_{func['id']}")
+
+                        inicio_ok = st.form_submit_button(
+                            "ENVIAR CONFIRMAÇÃO DE INÍCIO",
+                            type="primary", use_container_width=True)
+
+                    if inicio_ok:
+                        if not fi_email.strip():
+                            st.error("Informe o e-mail.")
+                        else:
+                            _hi_str = fi_hi.strftime('%H:%M') if fi_hi else 'a definir'
+                            _vt_str = (f"\n\nSobre o Vale Transporte: sim, será fornecido."
+                                       + (f" Linhas: {fi_linhas}." if fi_linhas else "")
+                                       if fi_vt else
+                                       "\n\nSobre o Vale Transporte: não será necessário.")
+                            if _eh_aprendiz:
+                                corpo_inicio = (
+                                    f"Prezada(o) {func['nome'].title()}, bom dia!\n\n"
+                                    f"Aqui é a equipe de RH do Hospital de Olhos Vale do Aço.\n\n"
+                                    f"Conforme alinhamento com a EPTOM, informamos que seu início "
+                                    f"será no dia {fi_di.strftime('%d/%m/%Y')}.\n\n"
+                                    f"O horário de trabalho será informado diretamente pela EPTOM.{_vt_str}\n\n"
+                                    f"Qualquer dúvida, estamos à disposição!\n\n"
+                                    f"Atenciosamente,\nEquipe de RH — Hospital de Olhos Vale do Aço"
+                                )
+                            else:
+                                corpo_inicio = (
+                                    f"Prezada(o) {func['nome'].title()}, bom dia!\n\n"
+                                    f"Aqui é a equipe de RH do Hospital de Olhos Vale do Aço.\n\n"
+                                    f"Confirmamos que seu início será no dia "
+                                    f"{fi_di.strftime('%d/%m/%Y')} às {_hi_str}.\n\n"
+                                    f"Carga horária: {fi_carga or 'a confirmar'}.{_vt_str}\n\n"
+                                    f"Endereço: {ENDERECO_HOVA}\n"
+                                    f"Ao chegar, informe na recepção e pergunte por Josi ou Paula.\n\n"
+                                    f"Qualquer dúvida, estamos à disposição!\n\n"
+                                    f"Atenciosamente,\nEquipe de RH — Hospital de Olhos Vale do Aço"
+                                )
+                            with st.spinner("Enviando confirmação de início..."):
+                                ok_ini = send_email(
+                                    fi_email,
+                                    "Hospital de Olhos Vale do Aço — Confirmação de Início",
+                                    corpo_inicio)
+                            if ok_ini:
+                                func['data_inicio_contrato']  = fi_di
+                                func['hora_inicio_contrato']  = fi_hi
+                                func['carga_horaria']         = fi_carga
+                                func['vale_transporte']       = fi_vt
+                                func['linhas_onibus']         = fi_linhas
+                                func['email_inicio_enviado']  = True
+                                salvar_json()
+                                st.success(f"✅ Confirmação de início enviada para {fi_email}")
                             else:
                                 st.error("Falha ao enviar. Tente novamente.")
 
