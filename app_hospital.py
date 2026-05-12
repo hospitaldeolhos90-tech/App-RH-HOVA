@@ -1541,7 +1541,7 @@ def enviar_ficha_eptom(nome_aprendiz: str, horario: str = "", salario: str = "",
         msg['Subject'] = f"Formulário Empresa — {nome_aprendiz.title()} — HOVA"
         msg['From']    = EMAIL_CONTA
         msg['To']      = EMAIL_EPTOM_RESP
-        msg['Bcc']     = EMAIL_CONTA
+        msg['Cc']      = EMAIL_CONTA  # cópia visível para o RH
         msg.attach(MIMEText(
             f"Bom dia!\n\nSegue em anexo o formulário da empresa preenchido para a aprendiz "
             f"{nome_aprendiz.title()}.\n\nAtenciosamente,\nEquipe de RH — Hospital de Olhos Vale do Aço",
@@ -1556,8 +1556,8 @@ def enviar_ficha_eptom(nome_aprendiz: str, horario: str = "", salario: str = "",
 
         with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as s:
             s.login(EMAIL_CONTA, SENHA_CONTA)
-            s.send_message(msg)
-        return True, f"Ficha enviada para {EMAIL_EPTOM_RESP}"
+            s.send_message(msg, to_addrs=[EMAIL_EPTOM_RESP, EMAIL_CONTA])
+        return True, f"Ficha enviada para {EMAIL_EPTOM_RESP} (cópia para {EMAIL_CONTA})"
     except Exception as e:
         return False, f"Erro: {e}"
 
@@ -4280,7 +4280,6 @@ with abas[8]:
                             "Linhas de ônibus (se VT):",
                             value=func.get('linhas_onibus',''),
                             placeholder="Ex: 201, 405",
-                            disabled=not fi_vt,
                             key=f"fi_linhas_{func['id']}")
 
                         inicio_ok = st.form_submit_button(
@@ -4711,7 +4710,8 @@ with abas[8]:
                         if func.get('eptom_ficha_enviada'):
                             st.markdown(
                                 "<div class='notif notif-ok' style='margin-top:10px;'>"
-                                "✅ Ficha já foi enviada para a EPTOM anteriormente.</div>",
+                                "✅ Ficha já foi enviada para a EPTOM anteriormente. "
+                                "Você pode reenviar se necessário.</div>",
                                 unsafe_allow_html=True)
 
         # ── GRID DE CARDS — estilo referência ────────────────────
