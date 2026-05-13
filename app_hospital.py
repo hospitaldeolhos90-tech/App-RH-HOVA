@@ -44,9 +44,20 @@ ARQUIVO_MEMORIA = "memoria_rh_hova.json"
 ARQUIVO_LOCK    = "memoria_rh_hova.lock"
 
 PALAVRAS_CV = [
-    "curriculo", "currículo", "curriculum", "cv ", " cv", "vaga", "candidato",
-    "candidatura", "emprego", "seleção", "selecao", "oportunidade",
-    "recepcionista", "enfermagem", "faturamento", "administrativo", "aprendiz"
+    # Palavras genéricas de candidatura
+    "curriculo","currículo","curriculum","cv ","vaga","candidato",
+    "candidatura","emprego","seleção","selecao","oportunidade",
+    "processo seletivo","me candidato","tenho interesse","gostaria de trabalhar",
+    "encaminho","segue","segue em anexo","apresento","meu perfil",
+    # Cargos específicos HOVA
+    "recepcionista","recepcao","recepção","atendente","atendimento",
+    "enfermagem","tecnico em enf","tec enf","tecnico enfermagem",
+    "faturamento","faturista","glosa","tiss",
+    "administrativo","assistente adm","auxiliar adm",
+    "aprendiz","jovem aprendiz","menor aprendiz",
+    # Capturas adicionais
+    "clinica","clinica","hospital","saude","saúde","oftalmologia","oftalmo",
+    "hova","holhos","vale do aco","vale do aço",
 ]
 
 # ── Critérios de Triagem Inteligente ──────
@@ -133,7 +144,7 @@ VAGAS_ABERTAS = [
 
 # ── EPTOM — Instituição de Jovem Aprendiz ──
 EMAIL_EPTOM       = "eptom.aprendiz@gmail.com"
-EMAIL_EPTOM_RESP  = "eptom@eptom.webnode.com.br"  # e-mail de retorno para a EPTOM
+EMAIL_EPTOM_RESP  = "eptom.aprendiz@gmail.com"
 
 # Dados fixos do Hospital para preencher a ficha automaticamente
 FICHA_EMPRESA_DADOS = {
@@ -165,17 +176,6 @@ def detectar_primeiro_emprego(texto: str) -> bool:
     if any(p in tl for p in sem_exp): return True
     if not any(p in tl for p in tem_exp): return True
     return False
-
-def detectar_cidade_longe(texto: str, cidade: str) -> tuple[bool, str]:
-    """Retorna (True, nome_cidade) se candidato mora longe."""
-    t = f"{texto} {cidade}".lower()
-    for c in CIDADES_LONGE:
-        if c in t: return True, c.title()
-    return False, ""
-
-def detectar_cidade_perto(texto: str, cidade: str) -> bool:
-    t = f"{texto} {cidade}".lower()
-    return any(c in t for c in CIDADES_PERTO)
 
 MESES_NOMES = {
     1:"Janeiro", 2:"Fevereiro", 3:"Marco", 4:"Abril",
@@ -1024,6 +1024,7 @@ def salvar_json():
             "contratados":     st.session_state.contratados,
             "ex_funcionarios": st.session_state.ex_funcionarios,
             "favoritos":       st.session_state.favoritos,
+            "nao_vieram":      st.session_state.get('nao_vieram', []),
         }
         _sb_set(dados)
         # Backup diário: só dispara uma vez por dia por sessão
@@ -1082,6 +1083,7 @@ def carregar_json():
             st.session_state.contratados        = _fix_datas(d.get("contratados",     []))
             st.session_state.ex_funcionarios    = _fix_datas(d.get("ex_funcionarios", []))
             st.session_state.favoritos          = _fix_datas(d.get("favoritos",       []))
+            st.session_state.nao_vieram         = _fix_datas(d.get("nao_vieram",      []))
             proc = set()
             for lst in [st.session_state.aguardando_retorno,
                         st.session_state.agendados,
@@ -1115,6 +1117,7 @@ _def = {
     'executar_sync': False, 'limite_sync': 30,
     'alertas_processados': set(),
     '_processados': set(),
+    'nao_vieram': [],
 }
 for k, v in _def.items():
     if k not in st.session_state:
@@ -1406,12 +1409,46 @@ def resumo(texto: str) -> str:
 
 
 def setor_cv(assunto, texto):
-    t = f"{assunto} {texto}".lower()
-    if any(p in t for p in ["recep","atendiment","telefonista","secretaria","recepcionista"]): return "RECEPCAO E ATENDIMENTO"
-    if any(p in t for p in ["enfermagem","tec. enf","tecnico em enf","enfermeir"]): return "TECNICO E ENFERMAGEM"
-    if any(p in t for p in ["faturamento","fatura","analista de fat"]): return "FATURAMENTO"
-    if any(p in t for p in ["adm","assistente adm","auxiliar adm","financeiro"]): return "ADMINISTRATIVO"
-    if any(p in t for p in ["aprendiz","jovem","menor aprendiz","primeiro emprego"]): return "JOVEM APRENDIZ"
+    """
+    Classificação refinada por palavras-chave.
+    Ordem importa: mais específico primeiro para evitar conflito.
+    """
+    t  = f"{assunto} {texto}".lower()
+    ta = assunto.lower()   # assunto tem peso maior
+
+    # Jovem Aprendiz — verificar antes de ADM para não confundir
+    if any(p in t for p in [
+        "aprendiz","jovem aprendiz","menor aprendiz","programa de aprendiz",
+        "lei do aprendiz","14 anos","15 anos","16 anos","17 anos"
+    ]): return "JOVEM APRENDIZ"
+
+    # Faturamento — verificar antes de recepção
+    if any(p in t for p in [
+        "faturamento","faturista","analista de fat","aux. fat",
+        "auxiliar de fat","setor de fat","contas a receber","glosa",
+        "tiss","tuss","convênio","convenio","plano de saude","plano de saúde"
+    ]): return "FATURAMENTO"
+
+    # Técnico de Enfermagem
+    if any(p in t for p in [
+        "enfermagem","técnico em enf","tecnico em enf","tec. enf","tec enf",
+        "enfermeir","auxiliar de enf","aux enf","coren","uti","upe","uci"
+    ]): return "TECNICO E ENFERMAGEM"
+
+    # Recepção — verificar após faturamento para não capturar "recepção hospitalar"
+    if any(p in t for p in [
+        "recepcionista","recepção","recepcao","atendiment","telefonista",
+        "secretaria","front desk","atendente","balconista","portaria"
+    ]): return "RECEPCAO E ATENDIMENTO"
+
+    # Administrativo
+    if any(p in t for p in [
+        "administrativo","assistente adm","auxiliar adm","aux. adm",
+        "analista adm","financeiro","rh ","recursos humanos","dp ",
+        "departamento pessoal","contábil","contabil","escritório","escritorio",
+        "gestão","gestao","coordenação","coordenacao"
+    ]): return "ADMINISTRATIVO"
+
     return "TRIAGEM GERAL"
 
 def novo_manual(nome, email_c, tel, setor):
@@ -2562,12 +2599,21 @@ for i, setor in enumerate(SETORES):
         fila     = _busca(base, termo)
         fila     = sorted(fila, key=lambda x: x.get('data_iso',''), reverse=True)
 
+        # Separar não lidos (aparecem primeiro)
+        nao_lidos = [x for x in fila if not x.get('lido')]
+        lidos     = [x for x in fila if x.get('lido')]
+        fila      = nao_lidos + lidos
+
         if fila:
-            idx_ex = st.session_state.pular_idx.get(setor, 0) % len(fila)
-            per    = f" — {filtro_mes}" if filtro_mes!="Todos os meses" else ""
+            idx_ex   = st.session_state.pular_idx.get(setor, 0) % len(fila)
+            per      = f" — {filtro_mes}" if filtro_mes!="Todos os meses" else ""
+            nl_badge = (f" &nbsp;<span style='background:#FEF3C7;color:#92540A;font-size:10px;"
+                        f"font-weight:700;padding:2px 8px;border-radius:20px;'>"
+                        f"{len(nao_lidos)} novos</span>" if nao_lidos else "")
             st.markdown(
                 f"<div style='font-size:12px;color:#8A94A6;margin-bottom:14px;'>"
                 f"<b style='color:#004D40;font-size:17px;'>{len(fila)}</b> candidato(s){per}"
+                f"{nl_badge}"
                 f" &nbsp;·&nbsp; Exibindo <b style='color:#004D40;'>{idx_ex+1}</b> de {len(fila)}"
                 f"</div>", unsafe_allow_html=True
             )
@@ -2727,6 +2773,9 @@ for i, setor in enumerate(SETORES):
 
         # ── CARD CANDIDATO ──
         else:
+            # Marcar como lido ao exibir
+            if not c.get('lido'):
+                c['lido'] = True
             if c.get('foto'):
                 b64 = base64.b64encode(c['foto']).decode()
                 av  = f"<img src='data:image/jpeg;base64,{b64}' class='avatar-img'>"
@@ -3135,16 +3184,159 @@ for i, setor in enumerate(SETORES):
             with bac:
                 if st.button("ACEITAR", key=f"acc_{c['id']}", type="primary",
                              use_container_width=True):
+                    c['lido'] = True
                     st.session_state.candidato_foco = c['id']
                     st.rerun()
 
 # ── ABA 6: AGENDADOS ──────────────────────
-with abas[6]:
+# ──────────────────────────────────────────
+# NÃO VIERAM — varredura automática de respostas + descarte 48h
+# ──────────────────────────────────────────
+def processar_nao_vieram():
+    """
+    - Lê e-mails automaticamente procurando respostas dos que não vieram
+    - Descarta automaticamente quem não respondeu em 48h
+    Chamado a cada carregamento de página (silencioso).
+    """
+    agora = datetime.datetime.now()
+    descartados = []
+    reagendados = []
+
+    nao_vieram = st.session_state.get('nao_vieram', [])
+    if not nao_vieram:
+        return
+
+    # ── Verificar respostas por e-mail ──
+    emails_nv = {c.get('email','').lower().strip(): c
+                 for c in nao_vieram if c.get('email','').strip()}
+    if emails_nv:
+        try:
+            conn = imaplib.IMAP4_SSL(IMAP_SERVER, 993, timeout=15)
+            conn.login(EMAIL_CONTA, SENHA_CONTA)
+            conn.select("INBOX")
+            data_corte = (datetime.date.today() - datetime.timedelta(days=3)).strftime("%d-%b-%Y")
+            _, ids = conn.search(None, f'SINCE {data_corte}')
+            for mid in (ids[0].split() or [])[-100:]:
+                try:
+                    _, md = conn.fetch(mid, '(RFC822)')
+                    msg  = email.message_from_bytes(md[0][1])
+                    rem  = email.utils.parseaddr(msg.get('From',''))[1].lower().strip()
+                    if rem not in emails_nv:
+                        continue
+                    cand = emails_nv[rem]
+                    if not cand.get('nv_respondeu'):
+                        cand['nv_respondeu']    = True
+                        cand['nv_respondeu_em'] = agora.isoformat()
+                        reagendados.append(cand['nome'])
+                except: continue
+            conn.logout()
+        except: pass
+
+    # ── Descarte automático após 48h sem resposta ──
+    ainda = []
+    for cand in nao_vieram:
+        enviado_em = cand.get('nv_enviado_em')
+        if not enviado_em:
+            ainda.append(cand)
+            continue
+        try:
+            dt_env = datetime.datetime.fromisoformat(enviado_em)
+        except:
+            ainda.append(cand)
+            continue
+        horas = (agora - dt_env).total_seconds() / 3600
+        if horas >= 48 and not cand.get('nv_respondeu'):
+            # Descarte silencioso
+            descartados.append(cand['nome'])
+        else:
+            ainda.append(cand)
+
+    if descartados or reagendados:
+        st.session_state.nao_vieram = ainda
+        salvar_json()
+
+
+    # Varredura automática a cada carregamento (silenciosa)
+    processar_nao_vieram()
+
     ag_list = _busca(_por_mes(st.session_state.agendados), termo)
 
     # ══════════════════════════════════════
-    # PAINEL DE ALERTAS — candidatos que responderam
+    # PAINEL — NÃO VIERAM À ENTREVISTA
     # ══════════════════════════════════════
+    nao_vieram_list = st.session_state.get('nao_vieram', [])
+    if nao_vieram_list:
+        n_resp   = sum(1 for c in nao_vieram_list if c.get('nv_respondeu'))
+        n_aguard = len(nao_vieram_list) - n_resp
+        agora_dt = datetime.datetime.now()
+
+        st.markdown(
+            f"<div style='background:#FFF5F5;border:1.5px solid #FEB2B2;border-radius:14px;"
+            f"padding:16px 20px;margin-bottom:20px;'>"
+            f"<div style='font-size:13px;font-weight:800;color:#9B2C2C;margin-bottom:4px;'>"
+            f"🚫 {len(nao_vieram_list)} candidato(s) não vieram à entrevista</div>"
+            f"<div style='font-size:11px;color:#9AA5B4;'>"
+            f"{n_resp} responderam &nbsp;·&nbsp; {n_aguard} aguardando "
+            f"(descarte automático em 48h)</div></div>",
+            unsafe_allow_html=True)
+
+        for cand in list(nao_vieram_list):
+            enviado_em = cand.get('nv_enviado_em')
+            respondeu  = cand.get('nv_respondeu', False)
+            horas_rest = 48
+            if enviado_em:
+                try:
+                    dt_env     = datetime.datetime.fromisoformat(enviado_em)
+                    horas_rest = max(0, 48 - (agora_dt - dt_env).total_seconds()/3600)
+                except: pass
+
+            status   = "✅ Respondeu" if respondeu else f"⏳ {horas_rest:.0f}h restantes"
+            cor_card = "#F0FAF8"  if respondeu else "#FFF5F5"
+            borda    = "#004D40"  if respondeu else "#FEB2B2"
+            df_nv    = cand['data_entrevista'].strftime('%d/%m/%Y') if cand.get('data_entrevista') else '—'
+            hf_nv    = cand['hora_entrevista'].strftime('%H:%M')    if cand.get('hora_entrevista') else '—'
+
+            with st.expander(f"{'✅' if respondeu else '⏳'} {cand['nome']} — {status}"):
+                st.markdown(
+                    f"<div style='background:{cor_card};border-left:3px solid {borda};"
+                    f"border-radius:0 8px 8px 0;padding:10px 14px;font-size:12px;"
+                    f"color:#4A5568;margin-bottom:10px;'>"
+                    f"<b>Entrevista era:</b> {df_nv} às {hf_nv}<br>"
+                    f"<b>Mensagem enviada em:</b> "
+                    f"{enviado_em[:16].replace('T',' ') if enviado_em else '—'}"
+                    f"</div>", unsafe_allow_html=True)
+
+                nv1, nv2, nv3 = st.columns(3)
+                with nv1:
+                    if st.button("REAGENDAR", key=f"nv_reag_{cand['id']}",
+                                 type="primary", use_container_width=True):
+                        st.session_state.agendados.append(cand)
+                        st.session_state.nao_vieram.remove(cand)
+                        salvar_json()
+                        st.rerun()
+                with nv2:
+                    if st.button("DESCARTAR", key=f"nv_desc_{cand['id']}",
+                                 use_container_width=True):
+                        st.session_state.nao_vieram.remove(cand)
+                        salvar_json()
+                        st.rerun()
+                with nv3:
+                    tel_nv = cand.get('telefone','')
+                    if tel_nv:
+                        msg_fup = (
+                            f"Olá {cand['nome'].title()}! Tudo bem? "
+                            f"Hoje tínhamos uma entrevista agendada e ficamos no aguardo. "
+                            f"Se surgiu algum imprevisto, fique à vontade para nos avisar. "
+                            f"Caso ainda tenha interesse, podemos tentar encontrar uma nova data!"
+                        )
+                        st.markdown(
+                            f'<a href="https://wa.me/55{tel_nv}?text='
+                            f'{urllib.parse.quote(msg_fup)}" target="_blank" '
+                            f'class="wa-btn" style="display:block;text-align:center;">'
+                            f'WhatsApp</a>', unsafe_allow_html=True)
+
+        st.markdown("<hr style='border:none;border-top:1px solid #E2E6EA;margin:0 0 20px;'>",
+                    unsafe_allow_html=True)
     alertas_ativos = [
         c for c in st.session_state.agendados
         if any(not a.get('lido') for a in c.get('alertas', []))
@@ -3441,22 +3633,71 @@ with abas[6]:
                             st.rerun()
 
                 else:
-                    be1, be2, be3 = st.columns(3)
+                    be1, be2, be3, be4 = st.columns(4)
                     with be1:
                         if st.button("EDITAR", key=f"ed_{c['id']}",
                                      use_container_width=True):
                             st.session_state['editar_agendado'] = c['id']
                             st.rerun()
                     with be2:
-                        if st.button("NÃO CONTRATAR", key=f"nc_ag_{c['id']}",
-                                     type="secondary", use_container_width=True):
-                            st.session_state['nc_agendado_foco'] = c['id']
+                        if st.button("NÃO VEIO", key=f"nv_{c['id']}",
+                                     use_container_width=True):
+                            st.session_state['nv_foco'] = c['id']
                             st.rerun()
                     with be3:
+                        if st.button("NÃO CONTRATAR", key=f"nc_ag_{c['id']}",
+                                     use_container_width=True):
+                            st.session_state['nc_agendado_foco'] = c['id']
+                            st.rerun()
+                    with be4:
                         if st.button("CONTRATAR", key=f"ct_{c['id']}",
                                      type="primary", use_container_width=True):
                             st.session_state.contratar_foco = c['id']
                             st.rerun()
+
+                    # ── Modal NÃO VEIO ──
+                    if st.session_state.get('nv_foco') == c['id']:
+                        st.markdown(
+                            "<div style='background:#FFF5F5;border:1.5px solid #FEB2B2;"
+                            "border-radius:14px;padding:20px 24px;margin-top:8px;'>",
+                            unsafe_allow_html=True)
+                        st.markdown(
+                            "<div style='font-size:13px;font-weight:700;color:#9B2C2C;"
+                            "margin-bottom:12px;'>Confirmar — Não Veio à Entrevista</div>",
+                            unsafe_allow_html=True)
+                        msg_nv = st.text_area(
+                            "Mensagem que será enviada:",
+                            value=(
+                                f"Olá {c['nome'].title()}! Tudo bem?\n\n"
+                                f"Hoje tínhamos uma entrevista agendada e ficamos no aguardo. "
+                                f"Se surgiu algum imprevisto, fique à vontade para nos avisar. "
+                                f"Caso ainda tenha interesse, podemos tentar encontrar "
+                                f"uma nova data!"
+                            ),
+                            height=160, key=f"msg_nv_{c['id']}")
+                        nvm1, nvm2 = st.columns(2)
+                        with nvm1:
+                            if st.button("Cancelar", key=f"nv_canc_{c['id']}",
+                                         use_container_width=True):
+                                st.session_state['nv_foco'] = None
+                                st.rerun()
+                        with nvm2:
+                            if st.button("CONFIRMAR E ENVIAR", key=f"nv_env_{c['id']}",
+                                         type="primary", use_container_width=True):
+                                # Enviar mensagem
+                                if c.get('email','').strip():
+                                    send_email(c['email'],
+                                               "Hospital de Olhos Vale do Aço — Entrevista",
+                                               msg_nv)
+                                # Mover para fila nao_vieram
+                                c['nv_enviado_em'] = datetime.datetime.now().isoformat()
+                                c['nv_respondeu']  = False
+                                st.session_state.nao_vieram.append(c)
+                                st.session_state.agendados.remove(c)
+                                st.session_state['nv_foco'] = None
+                                salvar_json()
+                                st.rerun()
+                        st.markdown("</div>", unsafe_allow_html=True)
 
                     # ── Modal Não Contratar ──
                     if st.session_state.get('nc_agendado_foco') == c['id']:
@@ -3557,6 +3798,24 @@ with abas[7]:
                         if _re.search(rf'\b{opcao}\b', texto_resposta):
                             op = opcao
                             break
+
+                    # ── Triagem geográfica automática ──
+                    # Se a resposta mencionar cidade longe → rejeitar automaticamente
+                    _class = classificar_cidade(texto_resposta, "")
+                    if _class == 'longe' and cand:
+                        _cidade_det = detectar_cidade_longe(texto_resposta, "")[1]
+                        _msg_geo = MSG_REJEICAO_CIDADE.replace(
+                            "Olá,", f"Olá {cand['nome'].title()},")
+                        send_email(cand['email'],
+                                   "Hospital de Olhos Vale do Aço — Processo Seletivo",
+                                   _msg_geo)
+                        st.session_state.aguardando_retorno.remove(cand)
+                        st.session_state.respostas_processadas.add(mid_str)
+                        res_auto.append(('warn',
+                            f"{cand['nome']} mora em {_cidade_det} — "
+                            f"descartado automaticamente e notificado."))
+                        salvar_json()
+                        continue
 
                     if not op:
                         continue
