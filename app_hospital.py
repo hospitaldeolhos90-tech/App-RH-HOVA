@@ -3284,11 +3284,12 @@ for i, setor in enumerate(SETORES):
 
 # ── ABA 6: AGENDADOS ──────────────────────
 with abas[6]:
-    # ──────────────────────────────────────────
-    # NÃO VIERAM — varredura automática de respostas + descarte 48h
-    # ──────────────────────────────────────────
     def processar_nao_vieram():
-    """
+        """
+        - Lê e-mails automaticamente procurando respostas dos que não vieram
+        - Descarta automaticamente quem não respondeu em 48h
+        Chamado a cada carregamento de página (silenciosa).
+        """
     - Lê e-mails automaticamente procurando respostas dos que não vieram
     - Descarta automaticamente quem não respondeu em 48h
     Chamado a cada carregamento de páagina (silencioso).
