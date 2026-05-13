@@ -78,24 +78,25 @@ CIDADES_RAIO_12KM = [
     "santana do paraíso","santana do paraiso","santana paraiso",
 ]
 
-# Outros estados e cidades distantes — REJEITAR com mensagem de localização
+# Outros estados e cidades distantes — sinalizar para revisão
+# IMPORTANTE: usar apenas nomes completos, NUNCA siglas soltas
+# pois siglas aparecem em nomes de escolas, empresas, etc.
 CIDADES_FORA = [
-    # MG longe
+    # MG longe (> 50km de Ipatinga)
     "belo horizonte","contagem","betim","governador valadares",
     "caratinga","manhuaçu","manhuacu","ponte nova","ubá","uba",
-    "viçosa","vicosa","muriaé","muriae","juiz de fora","valadares",
+    "viçosa","vicosa","muriaé","muriae","juiz de fora",
     "uberlândia","uberlandia","montes claros","divinópolis","divinopolis",
     "sete lagoas","poços de caldas","pocos de caldas","itabira","ouro preto",
-    # Outros estados
+    "barbacena","lavras","varginha","pouso alegre","itajubá","itajuba",
+    # Capitais e grandes cidades — nomes completos apenas
     "rio de janeiro","são paulo","sao paulo","vitória","vitoria",
     "brasília","brasilia","salvador","fortaleza","recife","manaus",
     "curitiba","porto alegre","belém","belem","goiânia","goiania",
     "maceió","maceio","natal","teresina","campo grande","cuiabá","cuiaba",
-    "macapá","macapa","porto velho","boa vista","palmas","florianópolis",
-    "florianopolis","aracaju","joão pessoa","joao pessoa","são luís","sao luis",
-    "espírito santo","espirito santo"," es "," rj "," sp "," mg ",
-    # Siglas de estado no texto
-    "/es","/rj","/sp","/ba","/pe","/ce","/go","/pr","/rs","/sc",
+    "macapá","macapa","porto velho","boa vista","palmas",
+    "florianópolis","florianopolis","aracaju","joão pessoa","joao pessoa",
+    "são luís","sao luis","espírito santo","espirito santo",
 ]
 
 def classificar_cidade(texto: str, cidade: str) -> str:
