@@ -1664,6 +1664,12 @@ Documentos necessários:
 
 A foto 3x4 deverá ser entregue presencialmente.
 
+VALE TRANSPORTE:
+Você precisará de Vale Transporte para vir ao trabalho?
+Responda neste mesmo e-mail com uma das opções:
+  SIM — e informe as linhas de ônibus que utiliza (Ex: Linha 201, 405)
+  NÃO — caso não precise de VT
+
 A data de início será informada em breve!
 Qualquer dúvida, estamos à disposição.
 
@@ -1699,6 +1705,12 @@ Documentos necessários:
   - Declaração escolar dos filhos (se houver)
 
 A foto 3x4 deverá ser entregue presencialmente.
+
+VALE TRANSPORTE:
+Você precisará de Vale Transporte para vir ao trabalho?
+Responda neste mesmo e-mail com uma das opções:
+  SIM — e informe as linhas de ônibus que utiliza (Ex: Linha 201, 405)
+  NÃO — caso não precise de VT
 
 A data de início e o horário de trabalho serão informados em breve pela EPTOM.
 Qualquer dúvida, estamos à disposição!
@@ -1762,8 +1774,11 @@ def varrer_documentos_recebidos() -> list[dict]:
                     if fn.lower().endswith('.pdf'):
                         payload = part.get_payload(decode=True)
                         if payload:
-                            # Nome do doc = nome do arquivo sem extensão
-                            nome_doc = os.path.splitext(fn)[0].strip()
+                            # Remover extensões duplas (.pdf.pdf) e normalizar
+                            nome_doc = fn
+                            while nome_doc.lower().endswith('.pdf'):
+                                nome_doc = nome_doc[:-4]
+                            nome_doc = nome_doc.replace('_',' ').replace('-',' ').strip()
                             encontrados.append({
                                 'cand_id_8':   cand_id_8,
                                 'nome_doc':    nome_doc,
@@ -4208,8 +4223,8 @@ with abas[8]:
             ca_unif  = ca7.text_input("Nº do Uniforme", placeholder="Ex: P / M / G")
             ca_carga = ca8.text_input("Carga Horária", placeholder="Ex: 6h semanais")
             ca_vt    = st.checkbox("Utiliza Vale Transporte")
-            ca_linhas= st.text_input("Linhas de Ônibus", placeholder="Ex: 201, 405",
-                                      disabled=not ca_vt)
+            ca_linhas= st.text_input("Linhas de Ônibus", placeholder="Ex: 201, 405")
+
             ca_foto  = st.file_uploader("Foto do colaborador (opcional)",
                                          type=["jpg","jpeg","png"],
                                          key="ca_foto_upload")
@@ -4433,8 +4448,7 @@ with abas[8]:
                                                      value=func.get('vale_transporte',False))
                         novo_linhas = st.text_input("Linhas de Ônibus",
                                                     value=func.get('linhas_onibus',''),
-                                                    placeholder="Ex: 201, 405",
-                                                    disabled=not novo_vt)
+                                                    placeholder="Ex: 201, 405")
 
                         # Upload de foto
                         nova_foto_up = st.file_uploader(
@@ -4674,18 +4688,50 @@ with abas[8]:
                             novos_salvos = []
                             for doc in docs_func:
                                 nd = doc['nome_doc']
-                                func['documentos'][nd] = doc['bytes_pdf']
-                                # Marcar no checklist se bater com algum item
-                                for item in func.get('docs_check', {}):
-                                    if item.lower() in nd.lower() or nd.lower() in item.lower():
+                                # FIX: remover extensões duplas (.pdf.pdf) e normalizar
+                                nd_limpo = nd
+                                while nd_limpo.lower().endswith('.pdf'):
+                                    nd_limpo = nd_limpo[:-4]
+                                nd_limpo = nd_limpo.replace('_',' ').replace('-',' ').strip()
+
+                                func['documentos'][nd_limpo] = doc['bytes_pdf']
+
+                                # Mapeamento flexível para checklist
+                                MAPA_DOCS = {
+                                    "RG":                            ["rg","identidade","id "],
+                                    "CPF":                           ["cpf"],
+                                    "PIS":                           ["pis","pasep","ctps","carteira"],
+                                    "Comprovante de Residência":     ["residencia","residência","comprovante de res","endereco","endereço"],
+                                    "Diploma":                       ["diploma","certificado","escolar","historico","histórico"],
+                                    "Cartão de Vacina":              ["vacina","vacinacao","vacinação","carteira nacional de vacinacao","carteira_nacio"],
+                                    "Certidão de Casamento":         ["casamento","certidao de cas","certidão de cas"],
+                                    "Certidão de Nascimento dos Filhos": ["nascimento","filho","filhos","certidao de nasc","certidão de nasc","declaracao","declaração","idade"],
+                                    "Foto 3x4":                      ["foto","3x4"],
+                                }
+                                nd_lower = nd_limpo.lower()
+                                for item, palavras in MAPA_DOCS.items():
+                                    if any(p in nd_lower for p in palavras):
                                         func['docs_check'][item] = True
-                                novos_salvos.append(nd)
+                                        break
+
+                                novos_salvos.append(nd_limpo)
+
                             salvar_json()
                             st.markdown(
                                 f"<div class='notif notif-ok'>"
-                                f"{len(novos_salvos)} documento(s) recebido(s) e salvo(s) automaticamente: "
+                                f"✅ {len(novos_salvos)} documento(s) recebido(s) e salvo(s): "
                                 f"{', '.join(novos_salvos)}</div>",
                                 unsafe_allow_html=True)
+
+                            # ── Alerta de VT se não foi definido ──
+                            if not func.get('vale_transporte_confirmado'):
+                                st.markdown(
+                                    "<div class='notif notif-warn' style='text-align:left;'>"
+                                    "⚠️ <b>Ação necessária:</b> Confirme se a colaboradora "
+                                    "precisará de <b>Vale Transporte</b>. "
+                                    "Preencha no campo abaixo (Dados & RH → Passo 2) "
+                                    "antes de enviar para a contabilidade.</div>",
+                                    unsafe_allow_html=True)
                         else:
                             st.markdown(
                                 "<div class='notif notif-info'>"
@@ -4818,7 +4864,8 @@ with abas[8]:
                             value=func.get('vale_transporte', False))
                         ntw_linhas = st.text_input(
                             "Linhas", value=func.get('linhas_onibus',''),
-                            disabled=not ntw_vt)
+                            placeholder="Ex: 201, 405",
+                            key=f"ntw_linhas_{func['id']}")
 
                         # Mostrar PDFs que serão anexados
                         docs_disponiveis = [k for k,v in func.get('documentos',{}).items() if v]
