@@ -1114,7 +1114,6 @@ _def = {
     'aguardando_retorno': [], 'cvs_antigos': [],
     'ex_funcionarios': [],
     'favoritos': [],
-    'emails_nao_processados': [],   # e-mails que falharam/sem anexo/parsing quebrado
     'historico_emails': set(),
     'candidato_foco': None, 'contratar_foco': None,
     'perfil_foco': None,
@@ -1420,57 +1419,63 @@ def resumo(texto: str) -> str:
 
 def setor_cv(assunto, texto):
     """
-    REGRA: assunto do e-mail define a vaga. Currículo NÃO sobrescreve.
-    Se assunto for claro → usa assunto. Se vago/vazio → usa currículo → TRIAGEM GERAL.
+    Classificação robusta — cobre padrões reais do webmail HOVA.
+    Ordem: Aprendiz → Faturamento → Enfermagem → Recepção → ADM → Geral
     """
-    ta = assunto.lower().strip()
-    t  = texto.lower() if texto else ""
+    t  = f"{assunto} {texto}".lower()
+    ta = assunto.lower()
 
-    # ── PASSO 1: assunto define com prioridade máxima ────────────
-    if any(p in ta for p in [
+    # ── Jovem Aprendiz ──────────────────────────────────────
+    if any(p in t for p in [
         "aprendiz","jovem aprendiz","menor aprendiz","programa aprendiz",
-        "14 anos","15 anos","16 anos","17 anos","primeiro emprego"
+        "lei do aprendiz","14 anos","15 anos","16 anos","17 anos",
+        "menor de idade","primeiro emprego"
     ]): return "JOVEM APRENDIZ"
 
-    if any(p in ta for p in [
+    # ── Faturamento ─────────────────────────────────────────
+    # Verificar ANTES de recepção pois "faturamento/recepção" deve ir para faturamento
+    if any(p in t for p in [
         "faturamento","faturista","aux faturamento","auxiliar de faturamento",
-        "faturamento/recep","faturamento recep"
+        "assistente de faturamento","analista de faturamento",
+        "aux. fat","fatura ","vaga faturamento","faturamento/recep",
+        "faturamento recep","contas a receber","glosa","tiss","tuss",
+        "convênio","convenio","plano de saude","plano de saúde",
+        "conta medica","conta médica"
     ]): return "FATURAMENTO"
 
-    if any(p in ta for p in [
-        "enfermagem","tecnico de enfermagem","técnico de enfermagem",
+    # ── Técnico de Enfermagem ────────────────────────────────
+    if any(p in t for p in [
+        "enfermagem","enfermeir",
+        "tecnico de enfermagem","técnico de enfermagem",
         "tecnica de enfermagem","técnica de enfermagem",
-        "tec de enfermagem","tec enfermagem","tec. enf","auxiliar de enf"
+        "tecnico em enfermagem","técnico em enfermagem",
+        "tec de enfermagem","tec enfermagem","tec. enf","tec enf",
+        "auxiliar de enf","aux enf","aux. enf",
+        "tecnico cnico","tecnico em enf",   # typos reais capturados
+        "coren","samu","uti","upe","uci","pronto socorro","ps ",
+        "curativo","medicacao","medicação","injecao","injeção"
     ]): return "TECNICO E ENFERMAGEM"
 
-    if any(p in ta for p in [
-        "recepcionista","recepção","recepcao","recep",
-        "atendente","atendimento ao paciente","atendimento ao cliente"
+    # ── Recepção e Atendimento ───────────────────────────────
+    if any(p in t for p in [
+        "recepcionista","recepção","recepcao","recep ",
+        "atendente","atendimento","atendimento ao cliente","atendimento ao paciente",
+        "telefonista","secretaria","secretária","secretario","secretário",
+        "front desk","balconista","portaria","porteiro",
+        "agendamento","agenda medica","agenda médica"
     ]): return "RECEPCAO E ATENDIMENTO"
 
-    if any(p in ta for p in [
-        "administrativo","administracao","administração",
-        "assistente adm","auxiliar adm","aux adm","recursos humanos"
-    ]): return "ADMINISTRATIVO"
-
-    # ── PASSO 2: assunto ambíguo/vazio → REVISAO_MANUAL ─────────
-    assunto_generico = (
-        not ta or
-        ta in ["curriculo","currículo","curriculum vitae","cv","vaga","candidatura"] or
-        len(ta) < 4
-    )
-    if assunto_generico:
-        return "REVISAO_MANUAL"
-
-    # ── PASSO 3: assunto tem palavras de CV mas sem cargo claro ──
-    # Só aqui usamos o currículo como desempate
+    # ── Administrativo ───────────────────────────────────────
     if any(p in t for p in [
-        "aprendiz","jovem aprendiz"
-    ]): return "JOVEM APRENDIZ"
-    if any(p in t for p in ["faturamento","faturista"]): return "FATURAMENTO"
-    if any(p in t for p in ["enfermagem","enfermeir","coren"]): return "TECNICO E ENFERMAGEM"
-    if any(p in t for p in ["recepcionista","recepção","recepcao"]): return "RECEPCAO E ATENDIMENTO"
-    if any(p in t for p in ["administrativo","assistente adm","auxiliar adm"]): return "ADMINISTRATIVO"
+        "administrativo","administracao","administração",
+        "assistente adm","auxiliar adm","aux adm","aux. adm",
+        "analista adm","assistente administrativo","auxiliar administrativo",
+        "financeiro","contas a pagar","contas a receber",
+        "recursos humanos"," rh ","departamento pessoal"," dp ",
+        "contabil","contábil","fiscal","tributario","tributário",
+        "escritório","escritorio","backoffice","back office",
+        "gestão","gestao","coordenação","coordenacao","coordenador"
+    ]): return "ADMINISTRATIVO"
 
     return "TRIAGEM GERAL"
 
@@ -1629,42 +1634,6 @@ def _assunto_docs(nome: str, cand_id: str) -> str:
     """Gera o assunto padronizado para o candidato responder com os documentos."""
     nome_limpo = re.sub(r'[^A-Za-z0-9]', '', nome.replace(' ', '_'))
     return f"{ASSUNTO_DOCS_PREFIX}-{nome_limpo}-{cand_id[:8]}"
-
-def email_solicitar_cidade(nome: str) -> str:
-    """E-mail institucional e acolhedor para solicitar localização do candidato."""
-    return (
-        f"Olá, {nome.title()}! Tudo bem?\n\n"
-        f"Agradecemos muito seu interesse em fazer parte da equipe do "
-        f"Hospital de Olhos Vale do Aço!\n\n"
-        f"Analisamos seu currículo com atenção e gostaríamos de dar continuidade "
-        f"ao processo seletivo. Para isso, precisamos confirmar uma informação:\n\n"
-        f"Qual é a sua cidade de residência atual?\n\n"
-        f"Nossas vagas são presenciais em Ipatinga/MG. Assim que confirmarmos "
-        f"sua localização, seguiremos com a próxima etapa.\n\n"
-        f"Aguardamos seu retorno! 😊\n\n"
-        f"Atenciosamente,\n"
-        f"Equipe de RH — Hospital de Olhos Vale do Aço\n"
-        f"rh@holhosvaledoaco.com.br"
-    )
-
-def email_regiao_incompativel(nome: str) -> str:
-    """E-mail respeitoso para candidatos fora da região."""
-    return (
-        f"Olá, {nome.title()}! Tudo bem?\n\n"
-        f"Muito obrigada pelo seu interesse em trabalhar no "
-        f"Hospital de Olhos Vale do Aço. Ficamos felizes em receber seu currículo!\n\n"
-        f"Após análise cuidadosa do seu perfil, identificamos que você reside "
-        f"fora da nossa região de atuação. Como todas as nossas vagas são "
-        f"presenciais em Ipatinga/MG e cidades vizinhas (Coronel Fabriciano, "
-        f"Timóteo e Santana do Paraíso), não seria viável para você o deslocamento "
-        f"diário até nossa unidade.\n\n"
-        f"Lamentamos não poder avançar neste momento, mas desejamos muito "
-        f"sucesso na sua busca por uma oportunidade mais próxima de você!\n\n"
-        f"Seu currículo ficará registrado em nosso banco de talentos.\n\n"
-        f"Atenciosamente,\n"
-        f"Equipe de RH — Hospital de Olhos Vale do Aço\n"
-        f"rh@holhosvaledoaco.com.br"
-    )
 
 def email_admissao(nome, dl, di=None, hi=None, cand_id=""):
     return f"""Prezada(o) {nome.title()}, bom dia!
@@ -2220,15 +2189,11 @@ def buscar_curriculos(limite):
                     "arquivo_bytes":payload, "foto":foto, "manual":False,
                     # ── Triagem inteligente ──
                     "primeiro_emprego": detectar_primeiro_emprego(txt),
-                    "cidade_longe":     False,  # NUNCA rejeitar automaticamente por cidade
-                    "cidade_longe_nome": detectar_cidade_longe(txt, cidade)[1],  # só sinaliza
-                    "possivel_fora_regiao": detectar_cidade_longe(txt, cidade)[0],  # aviso manual
+                    "cidade_longe":     detectar_cidade_longe(txt, cidade)[0],
+                    "cidade_longe_nome":detectar_cidade_longe(txt, cidade)[1],
                     "motivo_mudanca":   "",   # preenchido ao redirecionar setor
                     "motivo_rejeicao":  "",   # preenchido ao rejeitar
-                    "obs_triagem": (
-                    "⚠️ POSSÍVEL FORA DA REGIÃO — verificar localização antes de avançar."
-                    if detectar_cidade_longe(txt, cidade)[0] else ""
-                ),
+                    "obs_triagem":      "",   # observações livres
                     "duvida_enviada":   False,
                 }
 
@@ -2240,31 +2205,6 @@ def buscar_curriculos(limite):
 
         except Exception as e:
             logs.append(f"Erro msg {mid}: {e}")
-            # Salvar na fila de não processados para revisão manual
-            try:
-                assunto_err = ''
-                remetente_err = ''
-                try:
-                    _, md_err = conn.fetch(mid, '(RFC822)')
-                    if md_err and isinstance(md_err[0], tuple):
-                        msg_err = email.message_from_bytes(md_err[0][1])
-                        remetente_err = email.utils.parseaddr(msg_err.get('From',''))[1]
-                        raw_subj = msg_err.get('Subject','')
-                        dec2, enc2 = decode_header(raw_subj)[0]
-                        assunto_err = dec2.decode(enc2 or 'utf-8', errors='replace') if isinstance(dec2, bytes) else str(dec2)
-                except: pass
-                nao_proc = {
-                    "id": str(int(time.time()*1000)) + str(mid),
-                    "mid": mid.decode() if isinstance(mid, bytes) else str(mid),
-                    "remetente": remetente_err,
-                    "assunto": assunto_err or "(assunto não lido)",
-                    "erro": str(e),
-                    "data": datetime.datetime.now().strftime("%d/%m/%Y %H:%M"),
-                }
-                if 'emails_nao_processados' not in st.session_state:
-                    st.session_state.emails_nao_processados = []
-                st.session_state.emails_nao_processados.append(nao_proc)
-            except: pass
             continue
 
     try:
@@ -2296,8 +2236,7 @@ with st.sidebar:
     st.markdown("<span class='sb-label'>Filtro de setor</span>", unsafe_allow_html=True)
     filtro_setor = st.radio("", [
         "TODOS","TRIAGEM GERAL","RECEPCAO E ATENDIMENTO",
-        "TECNICO E ENFERMAGEM","ADMINISTRATIVO","FATURAMENTO","JOVEM APRENDIZ",
-        "REVISAO_MANUAL"
+        "TECNICO E ENFERMAGEM","ADMINISTRATIVO","FATURAMENTO","JOVEM APRENDIZ"
     ], label_visibility="collapsed")
 
     st.markdown("<hr style='border:none;border-top:1px solid rgba(255,255,255,0.08);margin:18px 0;'>", unsafe_allow_html=True)
@@ -3283,16 +3222,14 @@ for i, setor in enumerate(SETORES):
                     st.rerun()
 
 # ── ABA 6: AGENDADOS ──────────────────────
-with abas[6]:
-    def processar_nao_vieram():
-        """
-        - Lê e-mails automaticamente procurando respostas dos que não vieram
-        - Descarta automaticamente quem não respondeu em 48h
-        Chamado a cada carregamento de página (silenciosa).
-        """
+# ──────────────────────────────────────────
+# NÃO VIERAM — varredura automática de respostas + descarte 48h
+# ──────────────────────────────────────────
+def processar_nao_vieram():
+    """
     - Lê e-mails automaticamente procurando respostas dos que não vieram
     - Descarta automaticamente quem não respondeu em 48h
-    Chamado a cada carregamento de páagina (silencioso).
+    Chamado a cada carregamento de página (silencioso).
     """
     agora = datetime.datetime.now()
     descartados = []
@@ -5526,4 +5463,4 @@ with abas[10]:
                 <div style="color:#8A94A6;font-size:12px;margin-top:2px;">
                     {c.get('setor','—')} &nbsp;·&nbsp; {c.get('email','—')} &nbsp;·&nbsp; {c.get('data','—')}
                 </div>
-            </div>""", unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)s
