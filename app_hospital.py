@@ -1029,20 +1029,27 @@ def salvar_json():
     try:
         import copy as _copy
 
-        def _strip_pdfs(lista):
-            """Remove bytes de PDFs do dossiê antes de salvar no Supabase (evita timeout)."""
+        def _strip_pdfs_para_sb(lista):
+            """
+            Para o Supabase: salva nomes dos docs mas não os bytes (evita timeout).
+            Os bytes continuam intactos no st.session_state.
+            """
             resultado = []
             for item in lista:
-                item2 = _copy.copy(item)
+                item2 = _copy.deepcopy(item)
+                # Zerar bytes de PDFs — eles são grandes demais para o Supabase
                 if 'documentos' in item2 and isinstance(item2['documentos'], dict):
                     item2['documentos'] = {k: None for k in item2['documentos']}
+                # Zerar arquivo_bytes e foto também (já salvos em base64 na sessão)
+                item2.pop('arquivo_bytes', None)
+                item2.pop('foto', None)
                 resultado.append(item2)
             return resultado
 
         dados = {
             "aguardando":      st.session_state.aguardando_retorno,
             "agendados":       st.session_state.agendados,
-            "contratados":     _strip_pdfs(st.session_state.contratados),
+            "contratados":     _strip_pdfs_para_sb(st.session_state.contratados),
             "ex_funcionarios": st.session_state.ex_funcionarios,
             "favoritos":       st.session_state.favoritos,
             "nao_vieram":      st.session_state.get('nao_vieram', []),
@@ -4130,9 +4137,29 @@ with abas[8]:
             msg['Bcc']     = EMAIL_CONTA
             msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
 
-            # Anexar todos os PDFs do dossiê
+            # Anexar PDFs do dossiê
+            # Se bytes não estão na sessão (sumiram após reload), reler do e-mail
             docs = func.get('documentos', {})
-            for nome_doc, bytes_doc in docs.items():
+            docs_com_bytes = {k: v for k, v in docs.items() if v}
+
+            if not docs_com_bytes and docs:
+                # Tentar reler do e-mail
+                try:
+                    encontrados_ntw = varrer_documentos_recebidos()
+                    cand_id_8_ntw   = func.get('id','')[:8]
+                    for edoc in encontrados_ntw:
+                        if (edoc['cand_id_8'] == cand_id_8_ntw or
+                                edoc['remetente'] == func.get('email','').lower()):
+                            nd = edoc['nome_doc']
+                            # Verificar se esse doc está na lista do dossiê
+                            for k in docs.keys():
+                                if k.lower() in nd.lower() or nd.lower() in k.lower():
+                                    docs_com_bytes[k] = edoc['bytes_pdf']
+                                    break
+                except: pass
+
+            anexados = []
+            for nome_doc, bytes_doc in docs_com_bytes.items():
                 if bytes_doc:
                     part = MIMEBase('application','octet-stream')
                     part.set_payload(bytes_doc)
@@ -4140,6 +4167,10 @@ with abas[8]:
                     part.add_header('Content-Disposition',
                                     f'attachment; filename="{nome_doc}.pdf"')
                     msg.attach(part)
+                    anexados.append(nome_doc)
+
+            if not anexados:
+                return False, "Nenhum PDF encontrado para anexar. Clique em 'Verificar Caixa de Entrada' na aba Documentos antes de enviar."
 
             with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as s:
                 s.login(EMAIL_CONTA, SENHA_CONTA)
@@ -4708,7 +4739,8 @@ with abas[8]:
                                 "Diploma":                       ["diploma","certificado","escolar","historico","histórico"],
                                 "Cartão de Vacina":              ["vacina","vacinacao","vacinação","carteira nacional de vacinacao","carteira_nacio","carteira nacio"],
                                 "Certidão de Casamento":         ["casamento","certidao de cas","certidão de cas"],
-                                "Certidão de Nascimento dos Filhos": ["nascimento","filho","filhos","certidao de nasc","certidão de nasc","declaracao","declaração","idade","declaraçao"],
+                                "Certidão de Nascimento dos Filhos": ["nascimento dos filhos","filho","filhos","certidao de nasc","certidão de nasc","idade"],
+                                "Declaração Escolar":            ["declaracao escolar","declaração escolar","declaracao","declaração","escolar","comprovante de matricula","matricula","comprovante escolar"],
                                 "Foto 3x4":                      ["foto","3x4"],
                             }
 
@@ -4786,7 +4818,8 @@ with abas[8]:
                         "RG","CPF","PIS","Comprovante de Residência",
                         "Diploma","Cartão de Vacina",
                         "Certidão de Casamento",
-                        "Certidão de Nascimento dos Filhos","Foto 3x4",
+                        "Certidão de Nascimento dos Filhos",
+                        "Declaração Escolar","Foto 3x4",
                     ]
 
                     checks_atuais = func.get('docs_check', {})
