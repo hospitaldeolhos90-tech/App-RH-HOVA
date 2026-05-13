@@ -1027,10 +1027,22 @@ def _sb_backup_automatico(dados: dict):
 def salvar_json():
     """Serializa o estado, salva no Supabase e aciona backup diário automático."""
     try:
+        import copy as _copy
+
+        def _strip_pdfs(lista):
+            """Remove bytes de PDFs do dossiê antes de salvar no Supabase (evita timeout)."""
+            resultado = []
+            for item in lista:
+                item2 = _copy.copy(item)
+                if 'documentos' in item2 and isinstance(item2['documentos'], dict):
+                    item2['documentos'] = {k: None for k in item2['documentos']}
+                resultado.append(item2)
+            return resultado
+
         dados = {
             "aguardando":      st.session_state.aguardando_retorno,
             "agendados":       st.session_state.agendados,
-            "contratados":     st.session_state.contratados,
+            "contratados":     _strip_pdfs(st.session_state.contratados),
             "ex_funcionarios": st.session_state.ex_funcionarios,
             "favoritos":       st.session_state.favoritos,
             "nao_vieram":      st.session_state.get('nao_vieram', []),
@@ -4685,29 +4697,41 @@ with abas[8]:
                         if docs_func:
                             func.setdefault('documentos', {})
                             func.setdefault('docs_check', {})
-                            novos_salvos = []
+                            novos_salvos  = []
+                            ja_existentes = []
+
+                            MAPA_DOCS = {
+                                "RG":                            ["rg","identidade","id "],
+                                "CPF":                           ["cpf"],
+                                "PIS":                           ["pis","pasep","ctps","carteira"],
+                                "Comprovante de Residência":     ["residencia","residência","comprovante de res","endereco","endereço"],
+                                "Diploma":                       ["diploma","certificado","escolar","historico","histórico"],
+                                "Cartão de Vacina":              ["vacina","vacinacao","vacinação","carteira nacional de vacinacao","carteira_nacio","carteira nacio"],
+                                "Certidão de Casamento":         ["casamento","certidao de cas","certidão de cas"],
+                                "Certidão de Nascimento dos Filhos": ["nascimento","filho","filhos","certidao de nasc","certidão de nasc","declaracao","declaração","idade","declaraçao"],
+                                "Foto 3x4":                      ["foto","3x4"],
+                            }
+
                             for doc in docs_func:
                                 nd = doc['nome_doc']
-                                # FIX: remover extensões duplas (.pdf.pdf) e normalizar
+                                # Normalizar nome: remover extensões duplas
                                 nd_limpo = nd
                                 while nd_limpo.lower().endswith('.pdf'):
                                     nd_limpo = nd_limpo[:-4]
                                 nd_limpo = nd_limpo.replace('_',' ').replace('-',' ').strip()
 
+                                # ── DEDUP: pular se já existe com nome igual ou similar ──
+                                ja_tem = any(
+                                    nd_limpo.lower() in k.lower() or k.lower() in nd_limpo.lower()
+                                    for k in func['documentos'].keys()
+                                )
+                                if ja_tem:
+                                    ja_existentes.append(nd_limpo)
+                                    continue
+
                                 func['documentos'][nd_limpo] = doc['bytes_pdf']
 
-                                # Mapeamento flexível para checklist
-                                MAPA_DOCS = {
-                                    "RG":                            ["rg","identidade","id "],
-                                    "CPF":                           ["cpf"],
-                                    "PIS":                           ["pis","pasep","ctps","carteira"],
-                                    "Comprovante de Residência":     ["residencia","residência","comprovante de res","endereco","endereço"],
-                                    "Diploma":                       ["diploma","certificado","escolar","historico","histórico"],
-                                    "Cartão de Vacina":              ["vacina","vacinacao","vacinação","carteira nacional de vacinacao","carteira_nacio"],
-                                    "Certidão de Casamento":         ["casamento","certidao de cas","certidão de cas"],
-                                    "Certidão de Nascimento dos Filhos": ["nascimento","filho","filhos","certidao de nasc","certidão de nasc","declaracao","declaração","idade"],
-                                    "Foto 3x4":                      ["foto","3x4"],
-                                }
+                                # Marcar checklist
                                 nd_lower = nd_limpo.lower()
                                 for item, palavras in MAPA_DOCS.items():
                                     if any(p in nd_lower for p in palavras):
@@ -4716,12 +4740,26 @@ with abas[8]:
 
                                 novos_salvos.append(nd_limpo)
 
+                            # Salvar SEM os bytes dos PDFs no Supabase (evita timeout)
+                            # PDFs ficam só na sessão — checklist e nomes são salvos
                             salvar_json()
-                            st.markdown(
-                                f"<div class='notif notif-ok'>"
-                                f"✅ {len(novos_salvos)} documento(s) recebido(s) e salvo(s): "
-                                f"{', '.join(novos_salvos)}</div>",
-                                unsafe_allow_html=True)
+
+                            if novos_salvos:
+                                st.markdown(
+                                    f"<div class='notif notif-ok'>"
+                                    f"✅ {len(novos_salvos)} novo(s) documento(s) salvo(s): "
+                                    f"{', '.join(novos_salvos)}</div>",
+                                    unsafe_allow_html=True)
+                            if ja_existentes:
+                                st.markdown(
+                                    f"<div class='notif notif-info'>"
+                                    f"ℹ️ {len(ja_existentes)} já existia(m) no dossiê: "
+                                    f"{', '.join(ja_existentes)}</div>",
+                                    unsafe_allow_html=True)
+                            if not novos_salvos and not ja_existentes:
+                                st.markdown(
+                                    "<div class='notif notif-info'>Nenhum documento novo.</div>",
+                                    unsafe_allow_html=True)
 
                             # ── Alerta de VT se não foi definido ──
                             if not func.get('vale_transporte_confirmado'):
@@ -4729,8 +4767,7 @@ with abas[8]:
                                     "<div class='notif notif-warn' style='text-align:left;'>"
                                     "⚠️ <b>Ação necessária:</b> Confirme se a colaboradora "
                                     "precisará de <b>Vale Transporte</b>. "
-                                    "Preencha no campo abaixo (Dados & RH → Passo 2) "
-                                    "antes de enviar para a contabilidade.</div>",
+                                    "Preencha em Dados & RH → Passo 2.</div>",
                                     unsafe_allow_html=True)
                         else:
                             st.markdown(
