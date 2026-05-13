@@ -5463,4 +5463,4 @@ with abas[10]:
                 <div style="color:#8A94A6;font-size:12px;margin-top:2px;">
                     {c.get('setor','—')} &nbsp;·&nbsp; {c.get('email','—')} &nbsp;·&nbsp; {c.get('data','—')}
                 </div>
-            </div>""", unsafe_allow_html=True)s
+            </div>""", unsafe_allow_html=True)
