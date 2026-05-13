@@ -44,20 +44,28 @@ ARQUIVO_MEMORIA = "memoria_rh_hova.json"
 ARQUIVO_LOCK    = "memoria_rh_hova.lock"
 
 PALAVRAS_CV = [
-    # Palavras genéricas de candidatura
+    # Candidatura genérica
     "curriculo","currículo","curriculum","cv ","vaga","candidato",
     "candidatura","emprego","seleção","selecao","oportunidade",
     "processo seletivo","me candidato","tenho interesse","gostaria de trabalhar",
-    "encaminho","segue","segue em anexo","apresento","meu perfil",
-    # Cargos específicos HOVA
-    "recepcionista","recepcao","recepção","atendente","atendimento",
-    "enfermagem","tecnico em enf","tec enf","tecnico enfermagem",
-    "faturamento","faturista","glosa","tiss",
-    "administrativo","assistente adm","auxiliar adm",
-    "aprendiz","jovem aprendiz","menor aprendiz",
-    # Capturas adicionais
-    "clinica","clinica","hospital","saude","saúde","oftalmologia","oftalmo",
+    "encaminho","segue em anexo","apresento","meu perfil","minha candidatura",
+    # Jobbol e portais — assunto padrão "Nova candidatura para X"
+    "nova candidatura","jobbol","infojobs","indeed","catho","vagas.com",
+    # Cargos — escrita correta e variações reais
+    "recepcionista","recepcao","recepção","atendente","atendimento ao cliente",
+    "tecnico de enfermagem","técnico de enfermagem","tec de enfermagem",
+    "tecnica de enfermagem","técnica de enfermagem","tec enfermagem",
+    "tecnico em enfermagem","técnico em enfermagem",
+    "enfermagem","enfermeir","auxiliar de enfermagem","aux enfermagem",
+    "faturamento","faturista","aux faturamento","auxiliar de faturamento",
+    "vaga faturamento","faturamento recep","faturamento/recep",
+    "administrativo","assistente adm","auxiliar adm","aux adm",
+    "aprendiz","jovem aprendiz","menor aprendiz","programa aprendiz",
+    # Capturas por contexto hospitalar
+    "hospital","clinica","clínica","saude","saúde","oftalmologia","oftalmo",
     "hova","holhos","vale do aco","vale do aço",
+    # Assuntos minimalistas reais
+    "curriculo ","curriculum vitae","meu cv","meu curriculo",
 ]
 
 # ── Critérios de Triagem Inteligente ──────
@@ -1410,43 +1418,62 @@ def resumo(texto: str) -> str:
 
 def setor_cv(assunto, texto):
     """
-    Classificação refinada por palavras-chave.
-    Ordem importa: mais específico primeiro para evitar conflito.
+    Classificação robusta — cobre padrões reais do webmail HOVA.
+    Ordem: Aprendiz → Faturamento → Enfermagem → Recepção → ADM → Geral
     """
     t  = f"{assunto} {texto}".lower()
-    ta = assunto.lower()   # assunto tem peso maior
+    ta = assunto.lower()
 
-    # Jovem Aprendiz — verificar antes de ADM para não confundir
+    # ── Jovem Aprendiz ──────────────────────────────────────
     if any(p in t for p in [
-        "aprendiz","jovem aprendiz","menor aprendiz","programa de aprendiz",
-        "lei do aprendiz","14 anos","15 anos","16 anos","17 anos"
+        "aprendiz","jovem aprendiz","menor aprendiz","programa aprendiz",
+        "lei do aprendiz","14 anos","15 anos","16 anos","17 anos",
+        "menor de idade","primeiro emprego"
     ]): return "JOVEM APRENDIZ"
 
-    # Faturamento — verificar antes de recepção
+    # ── Faturamento ─────────────────────────────────────────
+    # Verificar ANTES de recepção pois "faturamento/recepção" deve ir para faturamento
     if any(p in t for p in [
-        "faturamento","faturista","analista de fat","aux. fat",
-        "auxiliar de fat","setor de fat","contas a receber","glosa",
-        "tiss","tuss","convênio","convenio","plano de saude","plano de saúde"
+        "faturamento","faturista","aux faturamento","auxiliar de faturamento",
+        "assistente de faturamento","analista de faturamento",
+        "aux. fat","fatura ","vaga faturamento","faturamento/recep",
+        "faturamento recep","contas a receber","glosa","tiss","tuss",
+        "convênio","convenio","plano de saude","plano de saúde",
+        "conta medica","conta médica"
     ]): return "FATURAMENTO"
 
-    # Técnico de Enfermagem
+    # ── Técnico de Enfermagem ────────────────────────────────
     if any(p in t for p in [
-        "enfermagem","técnico em enf","tecnico em enf","tec. enf","tec enf",
-        "enfermeir","auxiliar de enf","aux enf","coren","uti","upe","uci"
+        "enfermagem","enfermeir",
+        "tecnico de enfermagem","técnico de enfermagem",
+        "tecnica de enfermagem","técnica de enfermagem",
+        "tecnico em enfermagem","técnico em enfermagem",
+        "tec de enfermagem","tec enfermagem","tec. enf","tec enf",
+        "auxiliar de enf","aux enf","aux. enf",
+        "tecnico cnico","tecnico em enf",   # typos reais capturados
+        "coren","samu","uti","upe","uci","pronto socorro","ps ",
+        "curativo","medicacao","medicação","injecao","injeção"
     ]): return "TECNICO E ENFERMAGEM"
 
-    # Recepção — verificar após faturamento para não capturar "recepção hospitalar"
+    # ── Recepção e Atendimento ───────────────────────────────
     if any(p in t for p in [
-        "recepcionista","recepção","recepcao","atendiment","telefonista",
-        "secretaria","front desk","atendente","balconista","portaria"
+        "recepcionista","recepção","recepcao","recep ",
+        "atendente","atendimento","atendimento ao cliente","atendimento ao paciente",
+        "telefonista","secretaria","secretária","secretario","secretário",
+        "front desk","balconista","portaria","porteiro",
+        "agendamento","agenda medica","agenda médica"
     ]): return "RECEPCAO E ATENDIMENTO"
 
-    # Administrativo
+    # ── Administrativo ───────────────────────────────────────
     if any(p in t for p in [
-        "administrativo","assistente adm","auxiliar adm","aux. adm",
-        "analista adm","financeiro","rh ","recursos humanos","dp ",
-        "departamento pessoal","contábil","contabil","escritório","escritorio",
-        "gestão","gestao","coordenação","coordenacao"
+        "administrativo","administracao","administração",
+        "assistente adm","auxiliar adm","aux adm","aux. adm",
+        "analista adm","assistente administrativo","auxiliar administrativo",
+        "financeiro","contas a pagar","contas a receber",
+        "recursos humanos"," rh ","departamento pessoal"," dp ",
+        "contabil","contábil","fiscal","tributario","tributário",
+        "escritório","escritorio","backoffice","back office",
+        "gestão","gestao","coordenação","coordenacao","coordenador"
     ]): return "ADMINISTRATIVO"
 
     return "TRIAGEM GERAL"
@@ -2014,7 +2041,12 @@ def buscar_curriculos(limite):
                 (p.get_filename() or '').lower().endswith(('.pdf','.doc','.docx'))
                 for p in msg.walk()
             )
-            if not tem_palavra and not tem_anexo:
+            # Jobbol e portais: candidatura no corpo, sem PDF
+            eh_portal = any(p in remetente for p in [
+                "jobbol","infojobs","indeed","catho","vagas.com","linkedin",
+                "noreply","no-reply","notificacao","notificação"
+            ]) or "nova candidatura" in al
+            if not tem_palavra and not tem_anexo and not eh_portal:
                 continue
 
             for part in msg.walk():
@@ -3799,23 +3831,20 @@ with abas[7]:
                             op = opcao
                             break
 
-                    # ── Triagem geográfica automática ──
-                    # Se a resposta mencionar cidade longe → rejeitar automaticamente
-                    _class = classificar_cidade(texto_resposta, "")
-                    if _class == 'longe' and cand:
-                        _cidade_det = detectar_cidade_longe(texto_resposta, "")[1]
-                        _msg_geo = MSG_REJEICAO_CIDADE.replace(
-                            "Olá,", f"Olá {cand['nome'].title()},")
-                        send_email(cand['email'],
-                                   "Hospital de Olhos Vale do Aço — Processo Seletivo",
-                                   _msg_geo)
-                        st.session_state.aguardando_retorno.remove(cand)
-                        st.session_state.respostas_processadas.add(mid_str)
+                    # ── Triagem geográfica ──
+                    # Detecta cidade na resposta e classifica para revisão humana
+                    _class_geo = classificar_cidade(texto_resposta, "")
+                    _cidade_det = detectar_cidade_longe(texto_resposta, "")[1]
+                    if _class_geo == 'longe' and cand:
+                        # Marcar para revisão — NÃO descarta automaticamente
+                        cand['cidade_resposta'] = _cidade_det
+                        cand['alerta_cidade']   = True
                         res_auto.append(('warn',
-                            f"{cand['nome']} mora em {_cidade_det} — "
-                            f"descartado automaticamente e notificado."))
-                        salvar_json()
-                        continue
+                            f"⚠️ {cand['nome']} mencionou {_cidade_det} — "
+                            f"verifique na aba Aguardando Retorno."))
+                    elif _class_geo == 'perto' and cand:
+                        cand['cidade_resposta'] = texto_resposta[:30]
+                        cand['alerta_cidade']   = False
 
                     if not op:
                         continue
@@ -3915,12 +3944,13 @@ with abas[7]:
                     f"<b style='color:#B7791F;font-size:17px;'>{len(pend)}</b> aguardando resposta</div>",
                     unsafe_allow_html=True)
         for c in pend:
-            alerta = c.get('alerta_lota',False)
-            df     = c['data_entrevista'].strftime('%d/%m/%Y') if c.get('data_entrevista') else '—'
-            cls    = "card-alerta" if alerta else "card-pendente"
+            alerta       = c.get('alerta_lota', False)
+            alerta_cidade= c.get('alerta_cidade', False)
+            df           = c['data_entrevista'].strftime('%d/%m/%Y') if c.get('data_entrevista') else '—'
+            cls          = "card-alerta" if alerta else ("card-alerta" if alerta_cidade else "card-pendente")
             st.markdown(f"<div class='{cls}'>", unsafe_allow_html=True)
 
-            cc1, cc2, cc3, cc4 = st.columns([3, 1, 1, 0.5])
+            cc1, cc2, cc3, cc4, cc5 = st.columns([3, 1, 1, 1, 0.5])
             with cc1:
                 st.markdown(f"**{c['nome']}**")
                 st.markdown(
@@ -3931,6 +3961,13 @@ with abas[7]:
                     st.markdown(
                         "<span style='color:#9B2C2C;font-size:12px;font-weight:700;'>"
                         "TODOS OS HORARIOS ESGOTARAM — REAGENDE MANUALMENTE.</span>",
+                        unsafe_allow_html=True)
+                if alerta_cidade:
+                    cidade_r = c.get('cidade_resposta','outra região')
+                    st.markdown(
+                        f"<span style='background:#FEF3C7;color:#92540A;font-size:11px;"
+                        f"font-weight:700;padding:2px 8px;border-radius:20px;'>"
+                        f"📍 Respondeu: {cidade_r} — fora da região</span>",
                         unsafe_allow_html=True)
             with cc2:
                 if st.button("Agendar", key=f"mv_{c['id']}", use_container_width=True,
@@ -3945,6 +3982,21 @@ with abas[7]:
                     st.session_state['nao_contratar_foco'] = c['id']
                     st.rerun()
             with cc4:
+                # Botão rápido para enviar msg de localização e descartar
+                if alerta_cidade:
+                    if st.button("Enviar Loc. ✓", key=f"loc_{c['id']}",
+                                 use_container_width=True,
+                                 help="Envia mensagem de localização e descarta"):
+                        _msg_loc = MSG_REJEICAO_CIDADE.replace(
+                            "Olá,", f"Olá {c['nome'].title()},")
+                        if c.get('email','').strip():
+                            send_email(c['email'],
+                                       "Hospital de Olhos Vale do Aço — Processo Seletivo",
+                                       _msg_loc)
+                        st.session_state.aguardando_retorno.remove(c)
+                        salvar_json()
+                        st.rerun()
+            with cc5:
                 if st.button("🗑", key=f"del_ag_{c['id']}", use_container_width=True,
                              help="Remover desta lista sem enviar e-mail"):
                     st.session_state.aguardando_retorno.remove(c)
