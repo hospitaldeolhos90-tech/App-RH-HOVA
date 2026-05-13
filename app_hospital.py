@@ -3288,7 +3288,8 @@ def processar_nao_vieram():
         st.session_state.nao_vieram = ainda
         salvar_json()
 
-
+# ── ABA 6: AGENDADOS ──────────────────────
+with abas[6]:
     # Varredura automática a cada carregamento (silenciosa)
     processar_nao_vieram()
 
