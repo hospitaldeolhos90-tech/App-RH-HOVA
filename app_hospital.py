@@ -3291,7 +3291,7 @@ with abas[6]:
     """
     - Lê e-mails automaticamente procurando respostas dos que não vieram
     - Descarta automaticamente quem não respondeu em 48h
-    Chamado a cada carregamento de página (silencioso).
+    Chamado a cada carregamento de páagina (silencioso).
     """
     agora = datetime.datetime.now()
     descartados = []
