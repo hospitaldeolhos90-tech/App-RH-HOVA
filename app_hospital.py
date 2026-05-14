@@ -1027,29 +1027,40 @@ def _sb_backup_automatico(dados: dict):
 def salvar_json():
     """Serializa o estado, salva no Supabase e aciona backup diário automático."""
     try:
-        import copy as _copy
-
-        def _strip_pdfs_para_sb(lista):
+        def _serializar_contratados(lista):
             """
-            Para o Supabase: salva nomes dos docs mas não os bytes (evita timeout).
-            Os bytes continuam intactos no st.session_state.
+            Serializa a lista de contratados para o Supabase.
+            PDFs são convertidos para base64 (se pequenos) ou descartados (se grandes).
+            NUNCA modifica os objetos originais do session_state.
             """
             resultado = []
             for item in lista:
-                item2 = _copy.deepcopy(item)
-                # Zerar bytes de PDFs — eles são grandes demais para o Supabase
-                if 'documentos' in item2 and isinstance(item2['documentos'], dict):
-                    item2['documentos'] = {k: None for k in item2['documentos']}
-                # Zerar arquivo_bytes e foto também (já salvos em base64 na sessão)
-                item2.pop('arquivo_bytes', None)
-                item2.pop('foto', None)
+                # Criar dicionário novo — não usar deepcopy que pode corromper bytes
+                item2 = {}
+                for k, v in item.items():
+                    if k == 'documentos' and isinstance(v, dict):
+                        # Salvar bytes dos PDFs como base64 se tamanho total < 3MB
+                        total_bytes = sum(len(b) for b in v.values() if b)
+                        if total_bytes < 3 * 1024 * 1024:
+                            item2[k] = {
+                                nome: base64.b64encode(b).decode('utf-8') if b else None
+                                for nome, b in v.items()
+                            }
+                        else:
+                            # Muito grande — salvar só os nomes, bytes ficam na sessão
+                            item2[k] = {nome: None for nome in v}
+                    elif k in ('arquivo_bytes', 'foto') and v:
+                        # Esses já são tratados pelo _serial
+                        item2[k] = v
+                    else:
+                        item2[k] = v
                 resultado.append(item2)
             return resultado
 
         dados = {
             "aguardando":      st.session_state.aguardando_retorno,
             "agendados":       st.session_state.agendados,
-            "contratados":     _strip_pdfs_para_sb(st.session_state.contratados),
+            "contratados":     _serializar_contratados(st.session_state.contratados),
             "ex_funcionarios": st.session_state.ex_funcionarios,
             "favoritos":       st.session_state.favoritos,
             "nao_vieram":      st.session_state.get('nao_vieram', []),
@@ -4752,15 +4763,23 @@ with abas[8]:
                                     nd_limpo = nd_limpo[:-4]
                                 nd_limpo = nd_limpo.replace('_',' ').replace('-',' ').strip()
 
-                                # ── DEDUP: pular se já existe com nome igual ou similar ──
-                                ja_tem = any(
-                                    nd_limpo.lower() in k.lower() or k.lower() in nd_limpo.lower()
-                                    for k in func['documentos'].keys()
-                                )
-                                if ja_tem:
-                                    ja_existentes.append(nd_limpo)
+                                # ── Verificar se já existe com nome similar ──
+                                chave_existente = None
+                                for k in func['documentos'].keys():
+                                    if k.lower() in nd_limpo.lower() or nd_limpo.lower() in k.lower():
+                                        chave_existente = k
+                                        break
+
+                                if chave_existente:
+                                    # Já existe — atualizar bytes se estiverem None (sumiram após reload)
+                                    if func['documentos'][chave_existente] is None:
+                                        func['documentos'][chave_existente] = doc['bytes_pdf']
+                                        novos_salvos.append(f"{chave_existente} (bytes restaurados)")
+                                    else:
+                                        ja_existentes.append(chave_existente)
                                     continue
 
+                                # Novo documento — salvar
                                 func['documentos'][nd_limpo] = doc['bytes_pdf']
 
                                 # Marcar checklist
