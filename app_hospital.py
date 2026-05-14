@@ -968,6 +968,40 @@ def _get_supabase_client():
         st.error(f"Erro ao conectar ao Supabase: {e}")
         return None
 
+def _sb_salvar_pdf(func_id: str, nome_doc: str, bytes_pdf: bytes):
+    """Salva um PDF no Supabase como linha individual."""
+    try:
+        sb = _get_supabase_client()
+        if not sb or not bytes_pdf: return
+        chave = f"pdf_{func_id}_{nome_doc.replace(' ','_')[:40]}"
+        payload = base64.b64encode(bytes_pdf).decode('utf-8')
+        sb.table("hova_dados").upsert({
+            "id":         chave,
+            "dados":      {"bytes": payload, "nome": nome_doc, "func_id": func_id},
+            "updated_at": datetime.datetime.utcnow().isoformat(),
+        }).execute()
+    except Exception as e:
+        pass  # silencioso — não bloquear fluxo
+
+def _sb_carregar_pdfs(func_id: str) -> dict:
+    """Carrega todos os PDFs de um funcionário do Supabase."""
+    try:
+        sb = _get_supabase_client()
+        if not sb: return {}
+        prefixo = f"pdf_{func_id}_"
+        res = sb.table("hova_dados").select("dados").like("id", f"{prefixo}%").execute()
+        docs = {}
+        for row in (res.data or []):
+            d = row.get('dados', {})
+            nome = d.get('nome','')
+            b64  = d.get('bytes','')
+            if nome and b64:
+                try: docs[nome] = base64.b64decode(b64)
+                except: pass
+        return docs
+    except:
+        return {}
+
 def _sb_get() -> dict:
     """Lê o registro principal do Supabase."""
     try:
@@ -1025,33 +1059,30 @@ def _sb_backup_automatico(dados: dict):
         pass  # backup é silencioso — não interrompe o fluxo
 
 def salvar_json():
-    """Serializa o estado, salva no Supabase e aciona backup diário automático."""
+    """
+    Salva estado no Supabase.
+    PDFs de cada contratado são salvos em linhas SEPARADAS (evita timeout).
+    O payload principal salva só nomes dos docs (sem bytes).
+    """
     try:
-        def _serializar_contratados(lista):
-            """
-            Serializa a lista de contratados para o Supabase.
-            PDFs são convertidos para base64 (se pequenos) ou descartados (se grandes).
-            NUNCA modifica os objetos originais do session_state.
-            """
+        # ── Salvar PDFs individualmente antes do payload principal ──
+        for func in st.session_state.get('contratados', []):
+            docs = func.get('documentos', {})
+            for nome_doc, bytes_doc in docs.items():
+                if bytes_doc and isinstance(bytes_doc, (bytes, bytearray)):
+                    _sb_salvar_pdf(func['id'], nome_doc, bytes_doc)
+
+        # ── Payload principal: sem bytes de PDF ──
+        def _sem_bytes(lista):
             resultado = []
             for item in lista:
-                # Criar dicionário novo — não usar deepcopy que pode corromper bytes
                 item2 = {}
                 for k, v in item.items():
                     if k == 'documentos' and isinstance(v, dict):
-                        # Salvar bytes dos PDFs como base64 se tamanho total < 3MB
-                        total_bytes = sum(len(b) for b in v.values() if b)
-                        if total_bytes < 3 * 1024 * 1024:
-                            item2[k] = {
-                                nome: base64.b64encode(b).decode('utf-8') if b else None
-                                for nome, b in v.items()
-                            }
-                        else:
-                            # Muito grande — salvar só os nomes, bytes ficam na sessão
-                            item2[k] = {nome: None for nome in v}
-                    elif k in ('arquivo_bytes', 'foto') and v:
-                        # Esses já são tratados pelo _serial
-                        item2[k] = v
+                        # Só nomes, sem bytes
+                        item2[k] = {nome: None for nome in v}
+                    elif k in ('arquivo_bytes', 'foto') and isinstance(v, (bytes,bytearray)):
+                        item2[k] = v  # _serial converte para base64
                     else:
                         item2[k] = v
                 resultado.append(item2)
@@ -1060,13 +1091,12 @@ def salvar_json():
         dados = {
             "aguardando":      st.session_state.aguardando_retorno,
             "agendados":       st.session_state.agendados,
-            "contratados":     _serializar_contratados(st.session_state.contratados),
+            "contratados":     _sem_bytes(st.session_state.contratados),
             "ex_funcionarios": st.session_state.ex_funcionarios,
             "favoritos":       st.session_state.favoritos,
             "nao_vieram":      st.session_state.get('nao_vieram', []),
         }
         _sb_set(dados)
-        # Backup diário: só dispara uma vez por dia por sessão
         hoje = datetime.date.today().isoformat()
         if st.session_state.get('_ultimo_backup') != hoje:
             _sb_backup_automatico(dados)
@@ -1123,6 +1153,16 @@ def carregar_json():
             st.session_state.ex_funcionarios    = _fix_datas(d.get("ex_funcionarios", []))
             st.session_state.favoritos          = _fix_datas(d.get("favoritos",       []))
             st.session_state.nao_vieram         = _fix_datas(d.get("nao_vieram",      []))
+
+            # ── Restaurar PDFs dos contratados do Supabase ──
+            for func in st.session_state.contratados:
+                docs = func.get('documentos', {})
+                if docs and all(v is None for v in docs.values()):
+                    # Todos os bytes estão None — restaurar do Supabase
+                    pdfs_sb = _sb_carregar_pdfs(func['id'])
+                    if pdfs_sb:
+                        func['documentos'].update(pdfs_sb)
+
             proc = set()
             for lst in [st.session_state.aguardando_retorno,
                         st.session_state.agendados,
@@ -1522,7 +1562,6 @@ def novo_manual(nome, email_c, tel, setor):
         "arquivo_bytes": None, "foto": None, "manual": True,
     }
 
-# E-mail de teste — troque por pessoal.expert@ntwdoctor.com.br quando confirmar
 EMAIL_CONTABILIDADE = "pessoal.expert@ntwdoctor.com.br"
 
 def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str = "",
@@ -4149,25 +4188,15 @@ with abas[8]:
             msg.attach(MIMEText(corpo, 'plain', 'utf-8'))
 
             # Anexar PDFs do dossiê
-            # Se bytes não estão na sessão (sumiram após reload), reler do e-mail
             docs = func.get('documentos', {})
             docs_com_bytes = {k: v for k, v in docs.items() if v}
 
+            # Se bytes não estão na sessão, tentar recuperar do Supabase
             if not docs_com_bytes and docs:
-                # Tentar reler do e-mail
-                try:
-                    encontrados_ntw = varrer_documentos_recebidos()
-                    cand_id_8_ntw   = func.get('id','')[:8]
-                    for edoc in encontrados_ntw:
-                        if (edoc['cand_id_8'] == cand_id_8_ntw or
-                                edoc['remetente'] == func.get('email','').lower()):
-                            nd = edoc['nome_doc']
-                            # Verificar se esse doc está na lista do dossiê
-                            for k in docs.keys():
-                                if k.lower() in nd.lower() or nd.lower() in k.lower():
-                                    docs_com_bytes[k] = edoc['bytes_pdf']
-                                    break
-                except: pass
+                docs_com_bytes = _sb_carregar_pdfs(func['id'])
+                if docs_com_bytes:
+                    # Atualizar sessão com os bytes recuperados
+                    func['documentos'].update(docs_com_bytes)
 
             anexados = []
             for nome_doc, bytes_doc in docs_com_bytes.items():
@@ -4181,12 +4210,14 @@ with abas[8]:
                     anexados.append(nome_doc)
 
             if not anexados:
-                return False, "Nenhum PDF encontrado para anexar. Clique em 'Verificar Caixa de Entrada' na aba Documentos antes de enviar."
+                return False, ("Nenhum PDF encontrado para anexar. "
+                               "Vá até a aba Documentos e clique em "
+                               "'Verificar Caixa de Entrada' para recuperar os arquivos.")
 
             with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT) as s:
                 s.login(EMAIL_CONTA, SENHA_CONTA)
                 s.send_message(msg)
-            return True, f"E-mail enviado para {EMAIL_CONTABILIDADE} (TESTE)"
+            return True, f"E-mail enviado para {EMAIL_CONTABILIDADE}"
         except Exception as e:
             return False, f"Erro ao enviar: {e}"
 
@@ -4924,7 +4955,7 @@ with abas[8]:
                         "margin-bottom:4px;'>Encaminhar para Contabilidade</div>"
                         "<div style='font-size:12px;color:#4A5568;'>"
                         f"Envia e-mail para <b>{EMAIL_CONTABILIDADE}</b> "
-                        "(MODO TESTE — troque para pessoal.expert@ntwdoctor.com.br quando confirmar) "
+                        " "
                         "com os dados de admissão e todos os PDFs do dossiê anexados."
                         "</div></div>",
                         unsafe_allow_html=True)
