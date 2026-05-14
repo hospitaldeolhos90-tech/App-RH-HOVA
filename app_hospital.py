@@ -1809,52 +1809,93 @@ def send_email_admissao(dest: str, nome: str, dl, di, hi, cand_id: str,
 
 def varrer_documentos_recebidos() -> list[dict]:
     """
-    Varre a caixa de entrada buscando respostas dos contratados com PDFs.
-    Reconhece pelo assunto padronizado HOVA-DOCS-NOME-ID.
-    Retorna lista de {cand_id, nome_doc, bytes_pdf, email_remetente}.
+    Varre caixa buscando documentos de contratados.
+    Busca por: assunto HOVA-DOCS OU remetente = e-mail de algum contratado.
+    Suporta PDFs diretos e ZIPs com PDFs dentro.
     """
     encontrados = []
+
+    # Mapear e-mails dos contratados para cand_id
+    mapa_contratados = {
+        f.get('email','').lower().strip(): f.get('id','')
+        for f in st.session_state.get('contratados', [])
+        if f.get('email','').strip()
+    }
+
     try:
         conn = imaplib.IMAP4_SSL(IMAP_SERVER, 993, timeout=15)
         conn.login(EMAIL_CONTA, SENHA_CONTA)
         conn.select("INBOX")
-        _, ids = conn.search(None, f'(SUBJECT "{ASSUNTO_DOCS_PREFIX}")')
-        for mid in (ids[0].split() or [])[-100:]:
+
+        # Buscar por assunto HOVA-DOCS
+        _, ids1 = conn.search(None, f'(SUBJECT "{ASSUNTO_DOCS_PREFIX}")')
+        # Buscar dos últimos 30 dias (pode ter vindo sem assunto correto)
+        data_corte = (datetime.date.today() - datetime.timedelta(days=30)).strftime("%d-%b-%Y")
+        _, ids2 = conn.search(None, f'SINCE {data_corte} (HASATTACHMENT)')
+        
+        # Unir IDs sem duplicar
+        todos_ids = list(set((ids1[0].split() if ids1[0] else []) +
+                              (ids2[0].split() if ids2[0] else [])))[-200:]
+
+        for mid in todos_ids:
             try:
                 _, md = conn.fetch(mid, '(RFC822)')
-                msg   = email.message_from_bytes(md[0][1])
+                msg      = email.message_from_bytes(md[0][1])
+                remetente = email.utils.parseaddr(msg.get('From',''))[1].lower().strip()
+
+                # Determinar cand_id
                 subj_raw = msg.get('Subject','')
                 try:
                     dec, enc = decode_header(subj_raw)[0]
-                    subj = dec.decode(enc or 'utf-8', errors='replace') \
-                           if isinstance(dec, bytes) else str(dec)
+                    subj = dec.decode(enc or 'utf-8', errors='replace') if isinstance(dec, bytes) else str(dec)
                 except:
                     subj = subj_raw
 
-                if ASSUNTO_DOCS_PREFIX not in subj:
-                    continue
+                if ASSUNTO_DOCS_PREFIX in subj:
+                    partes    = subj.split('-')
+                    cand_id_8 = partes[-1].strip() if partes else ''
+                elif remetente in mapa_contratados:
+                    cand_id_8 = mapa_contratados[remetente][:8]
+                else:
+                    continue  # não é de nenhum contratado
 
-                # Extrair cand_id do assunto: HOVA-DOCS-NOME-XXXXXXXX
-                partes    = subj.split('-')
-                cand_id_8 = partes[-1].strip() if partes else ''
+                def _normalizar_nome(nome):
+                    while nome.lower().endswith('.pdf'):
+                        nome = nome[:-4]
+                    return nome.replace('_',' ').replace('-',' ').strip()
 
                 for part in msg.walk():
                     fn = part.get_filename() or ''
-                    if fn.lower().endswith('.pdf'):
-                        payload = part.get_payload(decode=True)
-                        if payload:
-                            # Remover extensões duplas (.pdf.pdf) e normalizar
-                            nome_doc = fn
-                            while nome_doc.lower().endswith('.pdf'):
-                                nome_doc = nome_doc[:-4]
-                            nome_doc = nome_doc.replace('_',' ').replace('-',' ').strip()
-                            encontrados.append({
-                                'cand_id_8':   cand_id_8,
-                                'nome_doc':    nome_doc,
-                                'bytes_pdf':   payload,
-                                'remetente':   email.utils.parseaddr(
-                                               msg.get('From',''))[1].lower(),
-                            })
+                    fn_lower = fn.lower()
+                    payload  = part.get_payload(decode=True)
+                    if not payload:
+                        continue
+
+                    # ── PDF direto ──
+                    if fn_lower.endswith('.pdf'):
+                        encontrados.append({
+                            'cand_id_8': cand_id_8,
+                            'nome_doc':  _normalizar_nome(fn),
+                            'bytes_pdf': payload,
+                            'remetente': remetente,
+                        })
+
+                    # ── ZIP com PDFs dentro ──
+                    elif fn_lower.endswith('.zip'):
+                        try:
+                            import zipfile, io as _io
+                            with zipfile.ZipFile(_io.BytesIO(payload)) as zf:
+                                for zname in zf.namelist():
+                                    if zname.lower().endswith('.pdf'):
+                                        encontrados.append({
+                                            'cand_id_8': cand_id_8,
+                                            'nome_doc':  _normalizar_nome(os.path.basename(zname)),
+                                            'bytes_pdf': zf.read(zname),
+                                            'remetente': remetente,
+                                        })
+                        except:
+                            pass
+
             except:
                 continue
         conn.logout()
