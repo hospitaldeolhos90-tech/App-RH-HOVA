@@ -1523,7 +1523,7 @@ def novo_manual(nome, email_c, tel, setor):
     }
 
 # E-mail de teste — troque por pessoal.expert@ntwdoctor.com.br quando confirmar
-EMAIL_CONTABILIDADE = "esterteixeiradepaula@gmail.com"
+EMAIL_CONTABILIDADE = "pessoal.expert@ntwdoctor.com.br"
 
 def gerar_ficha_eptom_docx(nome_aprendiz: str, horario: str = "", salario: str = "",
                            cnpj: str = "", empresa: str = "", resp_setor: str = "",
