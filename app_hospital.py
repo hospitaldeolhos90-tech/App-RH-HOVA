@@ -5764,150 +5764,242 @@ with abas[10]:
             </div>""", unsafe_allow_html=True)
 
 
-# ── ABA 11: CHAT / INBOX ────────────────────
+# ── ABA 11: CHAT / INBOX ─────────────────────────────────────────────
 with abas[11]:
     import streamlit.components.v1 as _comp_chat
 
-    if 'chat_msgs_cache' not in st.session_state:
-        st.session_state.chat_msgs_cache = {}
-    if 'chat_selecionado' not in st.session_state:
-        st.session_state.chat_selecionado = None
-
-    def _build_contatos_chat():
+    # ════════════════════════════════════════════════════════════════
+    # REGRA: chat só exibe contatos que estão em
+    # agendados / aguardando_retorno / contratados / ex_funcionarios
+    # ════════════════════════════════════════════════════════════════
+    def _contatos_permitidos():
+        """Retorna {email: dados} apenas de pessoas já no fluxo ativo."""
         ct = {}
-        for grupo in [st.session_state.contratados,
-                      st.session_state.agendados,
-                      st.session_state.aguardando_retorno]:
+        for grupo in [st.session_state.agendados,
+                      st.session_state.aguardando_retorno,
+                      st.session_state.contratados,
+                      st.session_state.ex_funcionarios]:
             for p in grupo:
                 em = p.get('email','').lower().strip()
                 if em and '@' in em:
-                    ct[em] = {'nome': p.get('nome','').title(),
-                               'email': em, 'foto': p.get('foto'),
-                               'setor': p.get('setor',''), 'id': p.get('id','')}
+                    ct[em] = {
+                        'nome':  p.get('nome','').title(),
+                        'email': em,
+                        'foto':  p.get('foto'),
+                        'setor': p.get('setor',''),
+                        'id':    p.get('id',''),
+                        'etapa': (
+                            'Agendado'    if p in st.session_state.agendados else
+                            'Aguardando'  if p in st.session_state.aguardando_retorno else
+                            'Contratado'  if p in st.session_state.contratados else
+                            'Ex-colaborador'
+                        ),
+                    }
         return ct
 
-    contatos_chat = _build_contatos_chat()
+    CONTATOS_ATIVOS = _contatos_permitidos()
 
-    ctrl1, ctrl2, ctrl3 = st.columns([2,1,1])
-    with ctrl1:
-        chat_busca = st.text_input("", placeholder="🔍  Buscar contato ou mensagem...",
-                                    key="chat_busca_inp", label_visibility="collapsed")
-    with ctrl2:
-        chat_limite = st.selectbox("", [30, 50, 100, 200],
-                                    key="chat_limite_sel", label_visibility="collapsed")
-    with ctrl3:
-        btn_sync = st.button("⟳  SINCRONIZAR", type="primary",
-                              use_container_width=True, key="chat_sync_btn")
+    # ── Persistência das mensagens no Supabase ───────────────────────
+    def _sb_salvar_msgs(email_contato: str, msgs: list):
+        """Salva histórico de mensagens de um contato no Supabase."""
+        try:
+            sb = _get_supabase_client()
+            if not sb: return
+            # Salvar sem bytes (apenas metadados + b64 pequenos)
+            msgs_clean = []
+            for m in msgs:
+                mc = {k: v for k, v in m.items() if k != '_bytes'}
+                # Limitar b64 de anexos a 500KB por anexo
+                anexos_limpos = []
+                for an in mc.get('anexos', []):
+                    an2 = dict(an)
+                    if len(an2.get('b64','')) > 500_000:
+                        an2['b64'] = ''  # muito grande, só nome
+                    anexos_limpos.append(an2)
+                mc['anexos'] = anexos_limpos
+                msgs_clean.append(mc)
+            chave = f"chat_{email_contato.replace('@','_').replace('.','_')}"
+            payload_str = __import__('json').dumps(msgs_clean, default=_serial, ensure_ascii=False)
+            sb.table("hova_dados").upsert({
+                "id":         chave,
+                "dados":      {"msgs": msgs_clean},
+                "updated_at": datetime.datetime.utcnow().isoformat(),
+            }).execute()
+        except: pass
 
-    if btn_sync:
-        with st.spinner("Lendo e-mails..."):
-            try:
-                conn_ch = imaplib.IMAP4_SSL(IMAP_SERVER, 993, timeout=20)
-                conn_ch.login(EMAIL_CONTA, SENHA_CONTA)
-                conn_ch.select("INBOX")
-                _, ids_ch = conn_ch.search(None, 'ALL')
-                todos = ids_ch[0].split()[-chat_limite:][::-1]
-                cache = st.session_state.chat_msgs_cache.copy()
-                novos = 0
-                for mid_ch in todos:
+    def _sb_carregar_msgs(email_contato: str) -> list:
+        """Carrega histórico de mensagens do Supabase."""
+        try:
+            sb = _get_supabase_client()
+            if not sb: return []
+            chave = f"chat_{email_contato.replace('@','_').replace('.','_')}"
+            res = sb.table("hova_dados").select("dados").eq("id", chave).execute()
+            if res.data:
+                return res.data[0]["dados"].get("msgs", [])
+            return []
+        except: return []
+
+    # ── Inicializar session_state do chat ────────────────────────────
+    if 'chat_cache' not in st.session_state:
+        st.session_state.chat_cache = {}     # {email: [msgs]}
+    if 'chat_sel' not in st.session_state:
+        st.session_state.chat_sel = None
+    if 'chat_ultimo_sync' not in st.session_state:
+        st.session_state.chat_ultimo_sync = {}  # {email: timestamp}
+    if 'chat_carregado_sb' not in st.session_state:
+        st.session_state.chat_carregado_sb = set()
+
+    # ── Auto-carregar do Supabase ao abrir (só 1x por contato) ──────
+    for em_init in list(CONTATOS_ATIVOS.keys()):
+        if em_init not in st.session_state.chat_carregado_sb:
+            msgs_sb = _sb_carregar_msgs(em_init)
+            if msgs_sb:
+                st.session_state.chat_cache[em_init] = msgs_sb
+            st.session_state.chat_carregado_sb.add(em_init)
+
+    # ── Função de sincronização (busca e-mails de 1 contato) ─────────
+    def _sincronizar_contato(email_c: str, nome_c: str, dias: int = 90) -> int:
+        """Busca e-mails do contato nos últimos N dias. Retorna novos."""
+        novos = 0
+        try:
+            conn_s = imaplib.IMAP4_SSL(IMAP_SERVER, 993, timeout=20)
+            conn_s.login(EMAIL_CONTA, SENHA_CONTA)
+            conn_s.select("INBOX")
+            data_corte = (datetime.date.today() - datetime.timedelta(days=dias)).strftime("%d-%b-%Y")
+            _, ids_s = conn_s.search(None, f'(FROM "{email_c}") SINCE {data_corte}')
+            ids_s2 = ids_s[0].split() if ids_s[0] else []
+            ids_existentes = {m['id'] for m in st.session_state.chat_cache.get(email_c, [])}
+
+            for mid_s in ids_s2:
+                try:
+                    mid_str = mid_s.decode() if isinstance(mid_s, bytes) else str(mid_s)
+                    if mid_str in ids_existentes:
+                        continue
+                    _, md_s = conn_s.fetch(mid_s, '(RFC822)')
+                    msg_s   = email.message_from_bytes(md_s[0][1])
+                    rem_nm_s, rem_em_s = email.utils.parseaddr(msg_s.get('From',''))
                     try:
-                        _, md_ch = conn_ch.fetch(mid_ch, '(RFC822)')
-                        msg_ch   = email.message_from_bytes(md_ch[0][1])
-                        rem_nm, rem_em = email.utils.parseaddr(msg_ch.get('From',''))
-                        rem_em = rem_em.lower().strip()
-                        try:
-                            dec_n, enc_n = decode_header(rem_nm)[0]
-                            rem_nm = dec_n.decode(enc_n or 'utf-8', errors='replace') if isinstance(dec_n,bytes) else str(dec_n)
-                        except: pass
-                        if not rem_nm: rem_nm = rem_em
-                        subj_ch = msg_ch.get('Subject','')
-                        try:
-                            dec_s, enc_s = decode_header(subj_ch)[0]
-                            subj_ch = dec_s.decode(enc_s or 'utf-8', errors='replace') if isinstance(dec_s,bytes) else str(dec_s)
-                        except: pass
-                        try:
-                            dt_ch   = parsedate_to_datetime(msg_ch.get('Date',''))
-                            data_ch = dt_ch.strftime('%d/%m/%Y %H:%M')
-                            ts_ch   = dt_ch.timestamp()
-                        except:
-                            data_ch = ''; ts_ch = 0
-                        corpo_ch = ''
-                        for pt_ch in msg_ch.walk():
-                            if pt_ch.get_content_type() == 'text/plain':
-                                try:
-                                    raw_ch = pt_ch.get_payload(decode=True).decode('utf-8', errors='ignore')
-                                    linhas_ch = [l.strip() for l in raw_ch.splitlines()
-                                                 if l.strip() and not l.strip().startswith('>')]
-                                    corpo_ch = '\n'.join(linhas_ch[:20]); break
-                                except: pass
-                        anexos_ch = []
-                        for pt_ch in msg_ch.walk():
-                            fn_ch = pt_ch.get_filename() or ''
-                            if fn_ch:
-                                pay_ch = pt_ch.get_payload(decode=True)
-                                ext_ch = fn_ch.lower().split('.')[-1] if '.' in fn_ch else ''
-                                b64_ch = base64.b64encode(pay_ch).decode() if pay_ch else ''
-                                anexos_ch.append({'nome':fn_ch,'tipo':ext_ch,'b64':b64_ch,'bytes':pay_ch})
-                        mid_str = mid_ch.decode() if isinstance(mid_ch,bytes) else str(mid_ch)
-                        msg_obj = {'id':mid_str,'de':rem_nm,'email':rem_em,'assunto':subj_ch,
-                                   'data':data_ch,'ts':ts_ch,'corpo':corpo_ch,
-                                   'anexos':[{k:v for k,v in a.items() if k!='bytes'} for a in anexos_ch],
-                                   '_bytes':{a['nome']:a['bytes'] for a in anexos_ch if a.get('bytes')},
-                                   'direcao':'recebido'}
-                        if rem_em not in cache:
-                            cache[rem_em] = {'nome':rem_nm,'email':rem_em,'msgs':[]}
-                        ids_existentes = {m['id'] for m in cache[rem_em]['msgs']}
-                        if mid_str not in ids_existentes:
-                            cache[rem_em]['msgs'].append(msg_obj)
-                            novos += 1
-                        if rem_em not in contatos_chat:
-                            contatos_chat[rem_em] = {'nome':rem_nm,'email':rem_em,'foto':None,'setor':'','id':rem_em}
-                    except: continue
-                conn_ch.logout()
-                st.session_state.chat_msgs_cache = cache
-                st.success(f"✅ {novos} nova(s) mensagem(ns) carregada(s).")
-            except Exception as e_ch:
-                st.error(f"Erro: {e_ch}")
+                        dec_n, enc_n = decode_header(rem_nm_s)[0]
+                        rem_nm_s = dec_n.decode(enc_n or 'utf-8', errors='replace') if isinstance(dec_n,bytes) else str(dec_n)
+                    except: pass
+                    subj_s = msg_s.get('Subject','')
+                    try:
+                        dec_ss, enc_ss = decode_header(subj_s)[0]
+                        subj_s = dec_ss.decode(enc_ss or 'utf-8', errors='replace') if isinstance(dec_ss,bytes) else str(dec_ss)
+                    except: pass
+                    try:
+                        dt_s   = parsedate_to_datetime(msg_s.get('Date',''))
+                        data_s = dt_s.strftime('%d/%m/%Y %H:%M')
+                        ts_s   = dt_s.timestamp()
+                    except:
+                        data_s = ''; ts_s = 0
+                    corpo_s = ''
+                    for pt_s in msg_s.walk():
+                        if pt_s.get_content_type() == 'text/plain':
+                            try:
+                                raw_s = pt_s.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                linhas_s = [l.strip() for l in raw_s.splitlines()
+                                            if l.strip() and not l.strip().startswith('>')]
+                                corpo_s = '\n'.join(linhas_s[:30]); break
+                            except: pass
+                    anexos_s = []
+                    for pt_s in msg_s.walk():
+                        fn_s = pt_s.get_filename() or ''
+                        if fn_s:
+                            pay_s = pt_s.get_payload(decode=True)
+                            ext_s = fn_s.lower().rsplit('.',1)[-1] if '.' in fn_s else ''
+                            b64_s = base64.b64encode(pay_s).decode() if pay_s else ''
+                            anexos_s.append({'nome':fn_s,'tipo':ext_s,'b64':b64_s})
+                    msg_obj_s = {
+                        'id': mid_str, 'de': rem_nm_s or nome_c,
+                        'email': rem_em_s.lower(), 'assunto': subj_s,
+                        'data': data_s, 'ts': ts_s, 'corpo': corpo_s,
+                        'anexos': anexos_s, 'direcao': 'recebido',
+                        '_bytes': {},
+                    }
+                    if email_c not in st.session_state.chat_cache:
+                        st.session_state.chat_cache[email_c] = []
+                    st.session_state.chat_cache[email_c].append(msg_obj_s)
+                    novos += 1
+                except: continue
+            conn_s.logout()
+            if novos > 0:
+                _sb_salvar_msgs(email_c, st.session_state.chat_cache[email_c])
+                st.session_state.chat_ultimo_sync[email_c] = time.time()
+        except: pass
+        return novos
 
-    cache_msgs = st.session_state.chat_msgs_cache
-    todos_contatos = {**contatos_chat,
-                      **{k:{'nome':v['nome'],'email':k,'foto':None,'setor':'','id':k}
-                         for k,v in cache_msgs.items() if k not in contatos_chat}}
+    # ── Sincronização automática ao abrir o chat ─────────────────────
+    sel_chat = st.session_state.chat_sel
+    if sel_chat and sel_chat in CONTATOS_ATIVOS:
+        agora_ts = time.time()
+        ult_sync = st.session_state.chat_ultimo_sync.get(sel_chat, 0)
+        # Re-sincronizar se passaram mais de 60s desde o último sync
+        if agora_ts - ult_sync > 60:
+            ct_info = CONTATOS_ATIVOS[sel_chat]
+            with st.spinner(f"Atualizando conversa com {ct_info['nome']}..."):
+                n_novos = _sincronizar_contato(sel_chat, ct_info['nome'])
+            if n_novos > 0:
+                st.toast(f"📬 {n_novos} nova(s) mensagem(ns)!", icon="✉️")
 
-    if chat_busca.strip():
-        t_b = chat_busca.lower()
-        todos_contatos = {k:v for k,v in todos_contatos.items()
-                          if t_b in v.get('nome','').lower() or t_b in k.lower()}
-
-    if not todos_contatos:
-        st.markdown('<div class="empty"><div class="e-title">NENHUMA CONVERSA</div>'
-                    '<div class="e-sub">Clique em Sincronizar para carregar os e-mails.</div></div>',
-                    unsafe_allow_html=True)
+    # ════════════════════════════════════════════════════════════════
+    # LAYOUT
+    # ════════════════════════════════════════════════════════════════
+    if not CONTATOS_ATIVOS:
+        st.markdown(
+            "<div class='empty'><div class='e-title'>NENHUM CONTATO ATIVO</div>"
+            "<div class='e-sub'>Mova candidatos para Agendados para iniciar conversas.</div></div>",
+            unsafe_allow_html=True)
     else:
+        # ── Barra de busca ───────────────────────────────────────────
+        chat_busca = st.text_input("", placeholder="🔍  Buscar contato...",
+                                    key="chat_busca_v2", label_visibility="collapsed")
+
         col_l, col_r = st.columns([1, 2.5])
 
+        # ── Lista de contatos ────────────────────────────────────────
         with col_l:
             st.markdown(
                 f"<div style='font-size:10px;font-weight:800;color:#004D40;"
-                f"letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;'>"
-                f"CONVERSAS ({len(todos_contatos)})</div>", unsafe_allow_html=True)
+                f"letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;'>"
+                f"CONVERSAS ({len(CONTATOS_ATIVOS)})</div>", unsafe_allow_html=True)
 
-            for em_c, ct in sorted(todos_contatos.items(),
-                key=lambda x: max((m['ts'] for m in cache_msgs.get(x[0],{}).get('msgs',[])),default=0),
-                reverse=True):
-                msgs_ct  = cache_msgs.get(em_c,{}).get('msgs',[])
-                n_msgs   = len(msgs_ct)
-                ultima   = msgs_ct[0]['corpo'][:35]+'...' if msgs_ct and msgs_ct[0]['corpo'] else '(sem mensagens)'
-                data_ult = msgs_ct[0]['data'][:10] if msgs_ct else ''
-                tem_an   = any(m.get('anexos') for m in msgs_ct)
-                sel_c    = st.session_state.chat_selecionado == em_c
+            contatos_ord = sorted(
+                CONTATOS_ATIVOS.items(),
+                key=lambda x: max(
+                    (m['ts'] for m in st.session_state.chat_cache.get(x[0],[])
+                     if m.get('ts')), default=0),
+                reverse=True)
+
+            if chat_busca.strip():
+                tb = chat_busca.lower()
+                contatos_ord = [(e,c) for e,c in contatos_ord
+                                if tb in c.get('nome','').lower() or tb in e.lower()]
+
+            for em_c, ct in contatos_ord:
+                msgs_c   = st.session_state.chat_cache.get(em_c, [])
+                n_msgs   = len(msgs_c)
+                msgs_ord = sorted(msgs_c, key=lambda x: x.get('ts',0), reverse=True)
+                ultima   = msgs_ord[0]['corpo'][:38]+'...' if msgs_ord and msgs_ord[0].get('corpo') else '—'
+                data_ult = msgs_ord[0]['data'][:10] if msgs_ord else ''
+                tem_an   = any(m.get('anexos') for m in msgs_c)
+                sel_c    = st.session_state.chat_sel == em_c
                 ini_c    = iniciais(ct.get('nome','?'))
-                bg_c     = "linear-gradient(135deg,#F0FAF8,#E6F4F1)" if sel_c else "#FFFFFF"
-                bd_c     = "1.5px solid #004D40" if sel_c else "1px solid #E8EAED"
+
+                # Badge de etapa
+                etapa_cores = {
+                    'Agendado':      ('#FEF3C7','#92540A'),
+                    'Aguardando':    ('#EBF4FF','#1A56DB'),
+                    'Contratado':    ('#DCFCE7','#166534'),
+                    'Ex-colaborador':('#F1F3F5','#4A5568'),
+                }
+                ec, tc = etapa_cores.get(ct.get('etapa',''), ('#F1F3F5','#4A5568'))
+                bg_c = "linear-gradient(135deg,#F0FAF8,#E6F4F1)" if sel_c else "#FFFFFF"
+                bd_c = "1.5px solid #004D40" if sel_c else "1px solid #E8EAED"
 
                 st.markdown(
                     f"<div style='background:{bg_c};border:{bd_c};border-radius:14px;"
-                    f"padding:11px 13px;margin-bottom:6px;'>"
+                    f"padding:11px 13px;margin-bottom:6px;transition:all 0.2s;'>"
                     f"<div style='display:flex;align-items:center;gap:9px;'>"
                     f"<div style='width:40px;height:40px;border-radius:50%;"
                     f"background:linear-gradient(145deg,#004D40,#26A69A);"
@@ -5915,223 +6007,280 @@ with abas[11]:
                     f"display:flex;align-items:center;justify-content:center;flex-shrink:0;'>"
                     f"{ini_c}</div>"
                     f"<div style='flex:1;min-width:0;'>"
-                    f"<div style='font-size:13px;font-weight:700;color:#0D1B2A;"
-                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;'>"
+                    f"<div style='display:flex;align-items:center;gap:6px;'>"
+                    f"<div style='font-size:12px;font-weight:700;color:#0D1B2A;"
+                    f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;'>"
                     f"{ct.get('nome','')}</div>"
-                    f"<div style='font-size:11px;color:#9AA5B4;white-space:nowrap;"
-                    f"overflow:hidden;text-overflow:ellipsis;'>{ultima}</div></div>"
+                    f"<span style='background:{ec};color:{tc};font-size:8px;"
+                    f"font-weight:700;padding:1px 6px;border-radius:20px;white-space:nowrap;'>"
+                    f"{ct.get('etapa','')}</span></div>"
+                    f"<div style='font-size:10px;color:#9AA5B4;white-space:nowrap;"
+                    f"overflow:hidden;text-overflow:ellipsis;margin-top:2px;'>{ultima}</div>"
+                    f"</div>"
                     f"<div style='text-align:right;flex-shrink:0;'>"
                     f"<div style='font-size:9px;color:#9AA5B4;'>{data_ult}</div>"
-                    f"{'<div style=\"background:#004D40;color:#fff;font-size:9px;font-weight:700;padding:1px 7px;border-radius:20px;margin-top:2px;\">'+str(n_msgs)+'</div>' if n_msgs else ''}"
-                    f"{'<span style=\"font-size:12px;\">📎</span>' if tem_an else ''}"
-                    f"</div></div></div>", unsafe_allow_html=True)
+                    + (f"<div style='background:#004D40;color:#fff;font-size:8px;"
+                       f"font-weight:700;padding:1px 6px;border-radius:20px;margin-top:2px;"
+                       f"text-align:center;'>{n_msgs}</div>" if n_msgs else "")
+                    + ("🔄 " if st.session_state.chat_ultimo_sync.get(em_c,0) > time.time()-60 else "")
+                    + ("📎" if tem_an else "")
+                    + "</div></div></div>", unsafe_allow_html=True)
 
-                if st.button("Abrir conversa", key=f"chat_open_{em_c}",
+                if st.button("Abrir", key=f"chat_v2_{em_c}",
                               use_container_width=True,
                               type="primary" if sel_c else "secondary"):
-                    st.session_state.chat_selecionado = em_c
+                    st.session_state.chat_sel = em_c
+                    # Forçar re-sync ao abrir
+                    st.session_state.chat_ultimo_sync[em_c] = 0
                     st.rerun()
 
+        # ── Área do chat ─────────────────────────────────────────────
         with col_r:
-            sel = st.session_state.chat_selecionado
-            if not sel:
+            sel = st.session_state.chat_sel
+
+            if not sel or sel not in CONTATOS_ATIVOS:
                 st.markdown(
-                    "<div style='height:500px;display:flex;flex-direction:column;"
+                    "<div style='height:520px;display:flex;flex-direction:column;"
                     "align-items:center;justify-content:center;"
-                    "background:#F8FAFB;border-radius:20px;"
-                    "border:1.5px dashed #B2DFDB;'>"
-                    "<div style='font-size:48px;margin-bottom:16px;'>💬</div>"
-                    "<div style='font-size:16px;font-weight:700;color:#004D40;'>"
+                    "background:linear-gradient(135deg,#F8FAFB,#F0FAF8);"
+                    "border-radius:20px;border:1.5px dashed #B2DFDB;'>"
+                    "<div style='font-size:52px;margin-bottom:16px;'>💬</div>"
+                    "<div style='font-size:17px;font-weight:800;color:#004D40;'>"
                     "Selecione uma conversa</div>"
-                    "<div style='font-size:13px;color:#9AA5B4;margin-top:6px;'>"
-                    "Clique em um contato ao lado</div></div>",
+                    "<div style='font-size:12px;color:#9AA5B4;margin-top:8px;'>"
+                    "Apenas contatos já agendados aparecem aqui</div></div>",
                     unsafe_allow_html=True)
             else:
-                ct_sel   = todos_contatos.get(sel, {})
-                msgs_sel = sorted(cache_msgs.get(sel,{}).get('msgs',[]), key=lambda x: x['ts'])
+                ct_sel   = CONTATOS_ATIVOS[sel]
+                msgs_sel = sorted(st.session_state.chat_cache.get(sel,[]),
+                                  key=lambda x: x.get('ts',0))
                 ini_sel  = iniciais(ct_sel.get('nome','?'))
+                ult_sync_str = (
+                    datetime.datetime.fromtimestamp(st.session_state.chat_ultimo_sync.get(sel,0))
+                    .strftime('%H:%M') if st.session_state.chat_ultimo_sync.get(sel) else 'nunca')
 
                 # Header
                 st.markdown(
-                    f"<div style='background:linear-gradient(135deg,#004D40,#26A69A);"
+                    f"<div style='background:linear-gradient(135deg,#004D40,#00695C);"
                     f"border-radius:16px 16px 0 0;padding:16px 22px;"
-                    f"display:flex;align-items:center;gap:12px;'>"
+                    f"display:flex;align-items:center;justify-content:space-between;'>"
+                    f"<div style='display:flex;align-items:center;gap:12px;'>"
                     f"<div style='width:46px;height:46px;border-radius:50%;"
                     f"background:rgba(255,255,255,0.2);color:#fff;"
                     f"display:flex;align-items:center;justify-content:center;"
                     f"font-size:16px;font-weight:800;'>{ini_sel}</div>"
                     f"<div><div style='color:#fff;font-size:15px;font-weight:800;'>"
                     f"{ct_sel.get('nome',sel)}</div>"
-                    f"<div style='color:rgba(255,255,255,0.7);font-size:11px;'>"
-                    f"{sel} · {len(msgs_sel)} mensagem(ns)</div></div></div>",
+                    f"<div style='color:rgba(255,255,255,0.65);font-size:11px;'>"
+                    f"{sel} · {ct_sel.get('etapa','')} · {len(msgs_sel)} mensagem(ns)"
+                    f"</div></div></div>"
+                    f"<div style='color:rgba(255,255,255,0.5);font-size:10px;'>"
+                    f"Sync: {ult_sync_str}</div></div>",
                     unsafe_allow_html=True)
 
-                # Construir balões HTML
-                def _build_chat_html(msgs, ct_nome, email_rh):
-                    CSS = """
-<style>
-*{margin:0;padding:0;box-sizing:border-box;}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
-     background:#F0F2F5;padding:16px;display:flex;flex-direction:column;gap:4px;}
-body::-webkit-scrollbar{width:4px;}
-body::-webkit-scrollbar-thumb{background:#B2DFDB;border-radius:4px;}
-.divider{display:flex;align-items:center;gap:10px;margin:14px 0 6px;}
-.divider::before,.divider::after{content:'';flex:1;height:1px;background:#CBD5E0;}
-.divider span{font-size:10px;font-weight:600;color:#9AA5B4;white-space:nowrap;}
-.row{display:flex;align-items:flex-end;gap:7px;margin-bottom:4px;
-     animation:fi 0.2s ease;}
-@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.row.s{flex-direction:row-reverse;}
-.av{width:30px;height:30px;border-radius:50%;
-    background:linear-gradient(145deg,#26A69A,#004D40);
-    color:#fff;font-size:10px;font-weight:800;
-    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.av.s{background:linear-gradient(145deg,#003329,#004D40);}
-.bubble{max-width:70%;padding:9px 13px 7px;border-radius:18px;
-        box-shadow:0 1px 3px rgba(0,0,0,0.08);}
-.bubble.r{background:#fff;border-bottom-left-radius:4px;}
-.bubble.s{background:linear-gradient(135deg,#004D40,#00695C);
-           color:#fff;border-bottom-right-radius:4px;}
-.subj{font-size:10px;font-weight:700;color:#004D40;margin-bottom:5px;
-      padding-bottom:5px;border-bottom:1px solid #E2E6EA;}
-.bubble.s .subj{color:rgba(255,255,255,0.75);border-color:rgba(255,255,255,0.2);}
-.body{font-size:12px;line-height:1.55;color:#1A202C;white-space:pre-wrap;word-break:break-word;}
-.bubble.s .body{color:#fff;}
-.ts{font-size:9px;color:#9AA5B4;text-align:right;margin-top:5px;}
-.bubble.s .ts{color:rgba(255,255,255,0.6);}
-.anwrap{margin-top:7px;display:flex;flex-direction:column;gap:5px;}
-.an{display:flex;align-items:center;gap:7px;background:rgba(0,77,64,0.07);
-    border:1px solid rgba(0,77,64,0.15);border-radius:9px;padding:7px 10px;
-    text-decoration:none;transition:background 0.15s;}
-.bubble.s .an{background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.2);}
-.an:hover{background:rgba(0,77,64,0.13);}
-.an-ico{font-size:16px;}
-.an-nm{font-size:11px;font-weight:600;color:#004D40;flex:1;
-       overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.bubble.s .an-nm{color:#fff;}
-.an-dl{font-size:12px;color:#004D40;}
-.bubble.s .an-dl{color:rgba(255,255,255,0.75);}
-</style>"""
+                # ── Construir HTML do chat ────────────────────────────
+                def _chat_html(msgs, nome_c, email_rh):
+                    css = (
+                        "<style>"
+                        "*{margin:0;padding:0;box-sizing:border-box;}"
+                        "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
+                        "background:#F0F2F5;padding:14px 12px;"
+                        "display:flex;flex-direction:column;gap:2px;}"
+                        "body::-webkit-scrollbar{width:4px;}"
+                        "body::-webkit-scrollbar-thumb{background:#B2DFDB;border-radius:4px;}"
+                        ".div{display:flex;align-items:center;gap:8px;margin:12px 0 4px;}"
+                        ".div::before,.div::after{content:'';flex:1;height:1px;background:#C8D0DC;}"
+                        ".div span{font-size:10px;font-weight:600;color:#9AA5B4;"
+                        "background:#F0F2F5;padding:0 8px;white-space:nowrap;}"
+                        ".row{display:flex;align-items:flex-end;gap:6px;margin-bottom:3px;"
+                        "animation:fi 0.2s ease;}"
+                        "@keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}"
+                        ".row.s{flex-direction:row-reverse;}"
+                        ".av{width:28px;height:28px;border-radius:50%;"
+                        "background:linear-gradient(145deg,#26A69A,#004D40);"
+                        "color:#fff;font-size:9px;font-weight:800;"
+                        "display:flex;align-items:center;justify-content:center;flex-shrink:0;}"
+                        ".av.s{background:linear-gradient(145deg,#003329,#004D40);}"
+                        ".bbl{max-width:72%;padding:8px 12px 6px;border-radius:16px;"
+                        "box-shadow:0 1px 3px rgba(0,0,0,0.08);word-break:break-word;}"
+                        ".bbl.r{background:#fff;border-bottom-left-radius:3px;}"
+                        ".bbl.s{background:linear-gradient(135deg,#004D40,#005A4F);"
+                        "color:#fff;border-bottom-right-radius:3px;}"
+                        ".sbj{font-size:9px;font-weight:700;color:#004D40;"
+                        "margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #EEF1F5;"
+                        "letter-spacing:0.3px;text-transform:uppercase;}"
+                        ".bbl.s .sbj{color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.15);}"
+                        ".bdy{font-size:12px;line-height:1.55;color:#1A202C;white-space:pre-wrap;}"
+                        ".bbl.s .bdy{color:#fff;}"
+                        ".ts{font-size:9px;color:#9AA5B4;text-align:right;margin-top:4px;}"
+                        ".bbl.s .ts{color:rgba(255,255,255,0.55);}"
+                        ".anwrap{margin-top:7px;display:flex;flex-direction:column;gap:5px;}"
+                        ".an{display:flex;align-items:center;gap:7px;"
+                        "background:rgba(0,77,64,0.07);border:1px solid rgba(0,77,64,0.15);"
+                        "border-radius:9px;padding:7px 10px;"
+                        "text-decoration:none;transition:background 0.15s;}"
+                        ".bbl.s .an{background:rgba(255,255,255,0.13);"
+                        "border-color:rgba(255,255,255,0.2);}"
+                        ".an:hover{background:rgba(0,77,64,0.13);}"
+                        ".ai{font-size:15px;}"
+                        ".an{font-size:11px;font-weight:600;color:#004D40;flex:1;"
+                        "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
+                        ".bbl.s .an{color:#fff;}"
+                        "</style>"
+                    )
                     body = ''
                     data_ant = ''
                     for m in msgs:
-                        dm = m['data'][:10] if m['data'] else ''
+                        dm = m.get('data','')[:10]
                         if dm != data_ant:
                             data_ant = dm
-                            body += f'<div class="divider"><span>{dm}</span></div>'
-                        eh_s = m['email'] == email_rh.lower()
+                            body += f'<div class="div"><span>{dm}</span></div>'
+                        eh_s = m.get('email','') == email_rh.lower()
                         lado = 's' if eh_s else 'r'
-                        ini_av = 'RH' if eh_s else iniciais(ct_nome)
-                        corp = m['corpo'].replace('<','&lt;').replace('>','&gt;').replace('\n','<br>') if m['corpo'] else ''
-                        subj = f'<div class="subj">{m["assunto"][:60]}</div>' if m.get('assunto') else ''
-                        hr   = m['data'][11:16] if len(m.get('data','')) > 10 else m.get('data','')
-                        ans  = ''
+                        ini_av = 'RH' if eh_s else iniciais(nome_c)
+                        corp = (m.get('corpo','') or '').replace('<','&lt;').replace('>','&gt;').replace('\n','<br>')
+                        sbj  = m.get('assunto','')
+                        hr   = m.get('data','')[11:16] if len(m.get('data',''))>10 else ''
+                        sbj_h = f'<div class="sbj">{sbj[:55]}</div>' if sbj else ''
+                        bdy_h = f'<div class="bdy">{corp}</div>' if corp else ''
+                        ans_h = ''
                         for an in m.get('anexos',[]):
                             b64a = an.get('b64','')
                             tn   = an.get('tipo','')
                             ico  = '📄' if tn=='pdf' else '🗜️' if tn=='zip' else '🖼️' if tn in ('jpg','jpeg','png') else '📎'
-                            nm   = an.get('nome','arquivo')[:28]
+                            nm   = an.get('nome','arq')[:30]
                             if b64a:
                                 mt = 'application/pdf' if tn=='pdf' else 'application/octet-stream'
                                 href = f'data:{mt};base64,{b64a}'
                             else:
                                 href = '#'
-                            ans += f'<a href="{href}" download="{nm}" class="an"><span class="an-ico">{ico}</span><span class="an-nm">{nm}</span><span class="an-dl">⬇</span></a>'
+                            ans_h += f'<a href="{href}" download="{nm}" class="an"><span class="ai">{ico}</span><span class="an">{nm}</span></a>'
+                        an_wrap = f'<div class="anwrap">{ans_h}</div>' if ans_h else ''
                         body += (f'<div class="row {lado}">'
                                  f'<div class="av {lado}">{ini_av}</div>'
-                                 f'<div class="bubble {lado}">{subj}'
-                                 f'{"<div class=body>"+corp+"</div>" if corp else ""}'
-                                 f'{"<div class=anwrap>"+ans+"</div>" if ans else ""}'
+                                 f'<div class="bbl {lado}">{sbj_h}{bdy_h}{an_wrap}'
                                  f'<div class="ts">{hr}</div></div></div>')
                     if not body:
-                        body = '<div style="text-align:center;padding:60px 20px;color:#9AA5B4;"><div style="font-size:40px">✉️</div><div style="margin-top:10px;font-size:13px;font-weight:600;">Nenhuma mensagem ainda</div></div>'
-                    scroll = '<script>window.scrollTo(0,document.body.scrollHeight);</script>'
-                    return f'<!DOCTYPE html><html><head><meta charset="utf-8">{CSS}</head><body>{body}{scroll}</body></html>'
+                        body = ('<div style="text-align:center;padding:50px 20px;color:#9AA5B4;">'
+                                '<div style="font-size:38px">✉️</div>'
+                                '<div style="margin-top:10px;font-size:13px;font-weight:600;">'
+                                'Nenhuma mensagem ainda</div>'
+                                '<div style="font-size:11px;margin-top:4px;">'
+                                'As mensagens aparecerão aqui após sincronização</div></div>')
+                    sc = '<script>window.scrollTo(0,document.body.scrollHeight);</script>'
+                    return f'<!DOCTYPE html><html><head><meta charset="utf-8">{css}</head><body>{body}{sc}</body></html>'
 
-                chat_html_out = _build_chat_html(msgs_sel, ct_sel.get('nome','?'), EMAIL_CONTA)
-                _comp_chat.html(chat_html_out, height=480, scrolling=True)
+                chat_out = _chat_html(msgs_sel, ct_sel.get('nome','?'), EMAIL_CONTA)
+                _comp_chat.html(chat_out, height=460, scrolling=True)
 
-                # Área de resposta
+                # ── Botão sync manual (emergência) ───────────────────
+                sync_col1, sync_col2 = st.columns([3,1])
+                with sync_col2:
+                    if st.button("🔄 Atualizar", key=f"sync_m_{sel}",
+                                  use_container_width=True):
+                        st.session_state.chat_ultimo_sync[sel] = 0
+                        st.rerun()
+
+                # ── Campo de resposta ────────────────────────────────
                 st.markdown(
                     "<div style='background:#fff;border:1.5px solid #B2DFDB;"
-                    "border-radius:0 0 16px 16px;padding:14px 18px;'>",
+                    "border-radius:0 0 16px 16px;padding:12px 16px;'>",
                     unsafe_allow_html=True)
                 r1, r2 = st.columns([4,1])
                 with r1:
-                    resp_txt = st.text_area("", placeholder="✍️  Digite uma mensagem...",
-                                             height=80, key=f"chat_resp_{sel}",
-                                             label_visibility="collapsed")
+                    resp_v = st.text_area(
+                        "", placeholder="✍️  Digite uma mensagem...",
+                        height=75, key=f"chat_msg_{sel}",
+                        label_visibility="collapsed")
                 with r2:
                     st.write("")
-                    resp_subj = st.text_input("", placeholder="Assunto",
-                                               key=f"chat_subj_{sel}",
-                                               label_visibility="collapsed")
+                    resp_sbj = st.text_input(
+                        "", placeholder="Assunto",
+                        key=f"chat_sbj_{sel}",
+                        label_visibility="collapsed")
                     if st.button("📤 ENVIAR", key=f"chat_env_{sel}",
                                   type="primary", use_container_width=True):
-                        if resp_txt.strip():
-                            assunto_r = resp_subj.strip() or (
+                        if resp_v.strip():
+                            sbj_r = resp_sbj.strip() or (
                                 f"Re: {msgs_sel[-1]['assunto']}" if msgs_sel else "HOVA RH")
-                            ok_r = send_email(sel, assunto_r, resp_txt)
+                            ok_r = send_email(sel, sbj_r, resp_v)
                             if ok_r:
-                                nova = {'id':f"sent_{int(time.time())}",
-                                        'de':'RH HOVA','email':EMAIL_CONTA.lower(),
-                                        'assunto':assunto_r,
-                                        'data':datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
-                                        'ts':time.time(),'corpo':resp_txt,
-                                        'anexos':[],'_bytes':{},'direcao':'enviado'}
-                                if sel not in st.session_state.chat_msgs_cache:
-                                    st.session_state.chat_msgs_cache[sel] = {'nome':ct_sel.get('nome',''),'email':sel,'msgs':[]}
-                                st.session_state.chat_msgs_cache[sel]['msgs'].append(nova)
+                                nova_m = {
+                                    'id':      f"sent_{int(time.time())}",
+                                    'de':      'RH HOVA',
+                                    'email':   EMAIL_CONTA.lower(),
+                                    'assunto': sbj_r,
+                                    'data':    datetime.datetime.now().strftime('%d/%m/%Y %H:%M'),
+                                    'ts':      time.time(),
+                                    'corpo':   resp_v,
+                                    'anexos':  [],
+                                    '_bytes':  {},
+                                    'direcao': 'enviado',
+                                }
+                                if sel not in st.session_state.chat_cache:
+                                    st.session_state.chat_cache[sel] = []
+                                st.session_state.chat_cache[sel].append(nova_m)
+                                _sb_salvar_msgs(sel, st.session_state.chat_cache[sel])
                                 st.success("✅ Enviado!")
                                 st.rerun()
                             else:
                                 st.error("Falha ao enviar.")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-                # Painel de anexos + vincular
-                todos_an = [(m, an) for m in msgs_sel for an in m.get('anexos',[]) if an.get('b64')]
+                # ── Painel de anexos da conversa ─────────────────────
+                todos_an = [(m,an) for m in msgs_sel for an in m.get('anexos',[]) if an.get('b64')]
                 if todos_an:
-                    with st.expander(f"📎 {len(todos_an)} anexo(s) nesta conversa"):
-                        an_c = st.columns(3)
-                        for i_a, (m_a, an_a) in enumerate(todos_an[:12]):
-                            with an_c[i_a % 3]:
-                                ico_a = '📄' if an_a.get('tipo')=='pdf' else '🗜️' if an_a.get('tipo')=='zip' else '📎'
+                    with st.expander(f"📎 {len(todos_an)} anexo(s) — baixar ou vincular ao dossiê"):
+                        an_cols = st.columns(4)
+                        for i_a,(m_a,an_a) in enumerate(todos_an[:16]):
+                            with an_cols[i_a%4]:
+                                tn_a = an_a.get('tipo','')
+                                ico_a = '📄' if tn_a=='pdf' else '🗜️' if tn_a=='zip' else '📎'
                                 st.markdown(
                                     f"<div style='background:#F8FAFB;border:1px solid #E2E6EA;"
-                                    f"border-radius:10px;padding:10px;text-align:center;"
-                                    f"margin-bottom:6px;'><div style='font-size:26px;'>{ico_a}</div>"
-                                    f"<div style='font-size:10px;color:#4A5568;font-weight:600;"
-                                    f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>"
-                                    f"{an_a.get('nome','')[:20]}</div></div>", unsafe_allow_html=True)
+                                    f"border-radius:10px;padding:8px;text-align:center;'>"
+                                    f"<div style='font-size:24px;'>{ico_a}</div>"
+                                    f"<div style='font-size:9px;color:#4A5568;font-weight:600;"
+                                    f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                                    f"margin-top:3px;'>{an_a.get('nome','')[:18]}</div></div>",
+                                    unsafe_allow_html=True)
                                 try:
-                                    bt = base64.b64decode(an_a['b64'])
-                                    st.download_button("⬇", bt, file_name=an_a.get('nome','arq'),
-                                                        key=f"dl_ch_{i_a}_{sel[:6]}",
+                                    bt_a = base64.b64decode(an_a['b64'])
+                                    st.download_button("⬇", bt_a,
+                                                        file_name=an_a.get('nome','arq'),
+                                                        key=f"dl_v2_{i_a}_{sel[:6]}",
                                                         use_container_width=True)
                                 except: pass
 
                         if st.session_state.contratados:
-                            st.markdown("<hr style='margin:8px 0;'>", unsafe_allow_html=True)
+                            st.markdown("<hr style='margin:8px 0;border-color:#E2E6EA;'>",
+                                        unsafe_allow_html=True)
                             vc1, vc2 = st.columns(2)
-                            func_v = vc1.selectbox("Vincular ao dossiê:",
-                                                    ["Selecionar..."]+[f['nome'] for f in st.session_state.contratados],
-                                                    key=f"vin_{sel[:8]}")
-                            if vc2.button("VINCULAR TUDO", key=f"vin_b_{sel[:8]}",
+                            func_vin = vc1.selectbox(
+                                "Vincular todos ao dossiê:",
+                                ["Selecionar..."]+[f['nome'] for f in st.session_state.contratados],
+                                key=f"vin_v2_{sel[:8]}")
+                            if vc2.button("VINCULAR TUDO", key=f"vinb_v2_{sel[:8]}",
                                            type="primary", use_container_width=True):
-                                if func_v != "Selecionar...":
-                                    fv = next((f for f in st.session_state.contratados if f['nome']==func_v), None)
+                                if func_vin != "Selecionar...":
+                                    fv = next((f for f in st.session_state.contratados
+                                               if f['nome']==func_vin), None)
                                     if fv:
                                         sv = 0
                                         for m_v in msgs_sel:
-                                            for nm_b, by_b in m_v.get('_bytes',{}).items():
-                                                if by_b:
-                                                    nl = nm_b
-                                                    while nl.lower().endswith('.pdf'): nl = nl[:-4]
-                                                    nl = nl.replace('_',' ').strip()
-                                                    fv.setdefault('documentos',{})[nl] = by_b
-                                                    _sb_salvar_pdf(fv['id'], nl, by_b)
-                                                    sv += 1
+                                            for an_v in m_v.get('anexos',[]):
+                                                b64v = an_v.get('b64','')
+                                                if b64v:
+                                                    try:
+                                                        bv   = base64.b64decode(b64v)
+                                                        nl_v = an_v.get('nome','doc')
+                                                        while nl_v.lower().endswith('.pdf'): nl_v = nl_v[:-4]
+                                                        nl_v = nl_v.replace('_',' ').strip()
+                                                        fv.setdefault('documentos',{})[nl_v] = bv
+                                                        _sb_salvar_pdf(fv['id'], nl_v, bv)
+                                                        sv += 1
+                                                    except: pass
                                         if sv:
                                             salvar_json()
-                                            st.success(f"✅ {sv} arquivo(s) vinculado(s) a {func_v}!")
+                                            st.success(f"✅ {sv} arquivo(s) vinculado(s) a {func_vin}!")
                                             st.rerun()
