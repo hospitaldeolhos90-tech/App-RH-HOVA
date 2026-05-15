@@ -245,20 +245,18 @@ st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
-/* ── Reset ── */
+
 #MainMenu {visibility:hidden;}
 footer    {visibility:hidden;}
 header    {visibility:hidden;}
 
-/* ── Base ── */
+
 html, body, .stApp, [class*="css"] {
     font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif !important;
 }
 .stApp { background: #EAECEF; }
 
-/* ═══════════════════════════════════════
-   SIDEBAR — verde petróleo escuro, sempre visível
-═══════════════════════════════════════ */
+
 section[data-testid="stSidebar"] {
     background: #003329 !important;
     border-right: none !important;
@@ -267,7 +265,7 @@ section[data-testid="stSidebar"] {
 }
 section[data-testid="stSidebar"] > div { padding-top: 0 !important; }
 
-/* Esconder o botão de fechar dentro da sidebar */
+
 section[data-testid="stSidebar"] button[aria-label*="Close"],
 section[data-testid="stSidebar"] button[aria-label*="close"],
 section[data-testid="stSidebar"] button[aria-label*="Fechar"],
@@ -281,16 +279,16 @@ section[data-testid="stSidebar"] button[aria-label*="collapse"],
     pointer-events: none !important;
 }
 
-/* Botão de reabrir (fora da sidebar, quando colapsada) — mantemos visível */
-/* mas forçamos o estado via JS */
 
-/* Sidebar no mobile — permite recolher normalmente */
+
+
+
 @media (max-width: 768px) {
     section[data-testid="stSidebar"] {
         min-width: unset !important;
         max-width: unset !important;
     }
-    /* Garantir que o botão de abrir sidebar fique visível no mobile */
+    
     button[data-testid="collapsedControl"] {
         display: flex !important;
         visibility: visible !important;
@@ -310,7 +308,7 @@ section[data-testid="stSidebar"] button[aria-label*="collapse"],
     }
 }
 
-/* Todos os textos da sidebar — branco */
+
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] p,
 section[data-testid="stSidebar"] span,
@@ -321,7 +319,7 @@ section[data-testid="stSidebar"] .stMarkdown {
 section[data-testid="stSidebar"] small,
 section[data-testid="stSidebar"] .stCaption { color: rgba(255,255,255,0.45) !important; }
 
-/* ── Radio buttons na sidebar — FIX VERMELHO ── */
+
 section[data-testid="stSidebar"] .stRadio > div { gap: 2px !important; }
 section[data-testid="stSidebar"] .stRadio label {
     background: transparent !important;
@@ -337,16 +335,16 @@ section[data-testid="stSidebar"] .stRadio label:hover {
     background: rgba(255,255,255,0.08) !important;
     color: #FFFFFF !important;
 }
-/* O círculo do radio — forçar verde petróleo */
+
 section[data-testid="stSidebar"] input[type="radio"] {
     accent-color: #26A69A !important;
 }
-/* Label selecionado */
+
 section[data-testid="stSidebar"] .stRadio label[data-baseweb="radio"]:has(input:checked),
 section[data-testid="stSidebar"] input[type="radio"]:checked + div {
     color: #FFFFFF !important;
 }
-/* Workaround direto para o ponto vermelho do radio */
+
 section[data-testid="stSidebar"] [data-baseweb="radio"] [data-checked="true"] div,
 section[data-testid="stSidebar"] [data-baseweb="radio"] div[role="radio"][aria-checked="true"] {
     border-color: #26A69A !important;
@@ -357,7 +355,7 @@ section[data-testid="stSidebar"] [data-baseweb="radio"] div[role="radio"] {
     background-color: transparent !important;
 }
 
-/* ── Select/Slider na sidebar ── */
+
 section[data-testid="stSidebar"] .stSelectbox > div > div,
 section[data-testid="stSidebar"] .stSelectbox select {
     background: rgba(255,255,255,0.08) !important;
@@ -373,7 +371,7 @@ section[data-testid="stSidebar"] .stSlider div[data-testid="stThumbValue"] {
     color: #FFFFFF !important;
 }
 
-/* ── Input na sidebar ── */
+
 section[data-testid="stSidebar"] input {
     background: rgba(255,255,255,0.08) !important;
     border: 1px solid rgba(255,255,255,0.15) !important;
@@ -388,12 +386,12 @@ section[data-testid="stSidebar"] input:focus {
     box-shadow: 0 0 0 2px rgba(38,166,154,0.25) !important;
 }
 
-/* ── Divisor na sidebar ── */
+
 section[data-testid="stSidebar"] hr {
     border-color: rgba(255,255,255,0.1) !important;
 }
 
-/* ── Botões na sidebar ── */
+
 section[data-testid="stSidebar"] div[data-testid="stButton"] button {
     background: rgba(255,255,255,0.08) !important;
     color: rgba(255,255,255,0.8) !important;
@@ -415,9 +413,7 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="primar
     background: #00897B !important;
 }
 
-/* ═══════════════════════════════════════
-   ANIMAÇÕES
-═══════════════════════════════════════ */
+
 @keyframes fadeUp {
     from { opacity:0; transform:translateY(14px); }
     to   { opacity:1; transform:translateY(0); }
@@ -427,9 +423,7 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="primar
     to   { opacity:1; transform:scale(1); }
 }
 
-/* ═══════════════════════════════════════
-   HERO CARD — maior, mais impactante
-═══════════════════════════════════════ */
+
 .hero-card {
     background: #FFFFFF;
     border-radius: 20px;
@@ -444,7 +438,7 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="primar
     position: relative;
     overflow: hidden;
 }
-/* Linha decorativa lateral verde */
+
 .hero-card::before {
     content: '';
     position: absolute;
@@ -481,7 +475,7 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="primar
     margin-top: 12px;
     font-weight: 500;
 }
-/* Stats — mais elegantes */
+
 .hero-stats { display:flex; gap:10px; }
 .stat-box {
     background: #F5F7FA;
@@ -511,9 +505,7 @@ section[data-testid="stSidebar"] div[data-testid="stButton"] button[kind="primar
     font-weight: 600;
 }
 
-/* ═══════════════════════════════════════
-   BOTÕES PRINCIPAIS — verde petróleo
-═══════════════════════════════════════ */
+
 div[data-testid="stButton"] button {
     height: 48px !important;
     border-radius: 9px !important;
@@ -551,9 +543,7 @@ div[data-testid="stButton"] button[kind="secondary"]:focus {
     box-shadow: 0 0 0 3px rgba(0,77,64,0.12) !important;
 }
 
-/* ═══════════════════════════════════════
-   ABAS
-═══════════════════════════════════════ */
+
 div[data-testid="stTabs"] {
     background: #FFFFFF;
     border-radius: 14px;
@@ -578,9 +568,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
     border-bottom: 2.5px solid #004D40 !important;
 }
 
-/* ═══════════════════════════════════════
-   CARD CANDIDATO
-═══════════════════════════════════════ */
+
 .card-cand {
     background: #FFFFFF;
     border: 1px solid #E2E6EA;
@@ -602,9 +590,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
 }
 .cand-info { font-size: 13px; color: #9AA5B4; margin-bottom: 18px; line-height: 1.6; }
 
-/* ═══════════════════════════════════════
-   TAGS
-═══════════════════════════════════════ */
+
 .tag {
     display: inline-block;
     padding: 5px 13px;
@@ -620,9 +606,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
 .tag-azul   { background:#EBF4FF; color:#1A56DB; border:1px solid #C3D9F7; }
 .tag-manual { background:#FFF8EC; color:#92540A; border:1px solid #F6D860; }
 
-/* ═══════════════════════════════════════
-   RESUMO CURRÍCULO
-═══════════════════════════════════════ */
+
 .cv-resumo {
     background: #F8FAFB;
     border: 1px solid #E2E6EA;
@@ -635,9 +619,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
     margin-top: 20px;
 }
 
-/* ═══════════════════════════════════════
-   AVATAR
-═══════════════════════════════════════ */
+
 .avatar {
     width: 82px; height: 82px;
     border-radius: 50%;
@@ -657,9 +639,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
     box-shadow: 0 4px 14px rgba(0,0,0,0.1);
 }
 
-/* ═══════════════════════════════════════
-   CARDS DE ETAPAS
-═══════════════════════════════════════ */
+
 .card-agendado {
     background: #FFFFFF;
     border: 1px solid #E2E6EA;
@@ -696,9 +676,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
     border-left: 4px solid #9B2C2C;
 }
 
-/* ═══════════════════════════════════════
-   FORMULÁRIO AGENDAMENTO
-═══════════════════════════════════════ */
+
 .form-sched {
     background: #F5FFFE;
     border: 1.5px solid #B2DFDB;
@@ -708,9 +686,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
     box-shadow: 0 2px 10px rgba(0,77,64,0.06);
 }
 
-/* ═══════════════════════════════════════
-   NOTIFICAÇÕES
-═══════════════════════════════════════ */
+
 .notif {
     border-radius: 9px;
     padding: 14px 20px;
@@ -724,9 +700,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
 .notif-info { background:#EBF4FF; border:1px solid #93C5FD; color:#1E40AF; }
 .notif-warn { background:#FFFBEB; border:1px solid #D4A853; color:#92540A; }
 
-/* ═══════════════════════════════════════
-   ESTADO VAZIO
-═══════════════════════════════════════ */
+
 .empty { text-align:center; padding:72px 20px; }
 .empty .e-title {
     font-size: 11px; font-weight: 700;
@@ -734,9 +708,7 @@ div[data-testid="stTabs"] button[aria-selected="true"] {
 }
 .empty .e-sub { font-size: 12px; color: #DDE1E7; margin-top: 8px; }
 
-/* ═══════════════════════════════════════
-   INPUTS PRINCIPAIS
-═══════════════════════════════════════ */
+
 div[data-testid="stTextInput"] input {
     border-radius: 8px !important;
     border: 1.5px solid #D1D8E0 !important;
@@ -752,7 +724,7 @@ div[data-testid="stTextInput"] input:focus {
 }
 div[data-testid="stTextInput"] input::placeholder { color: #B0BAC8 !important; }
 
-/* ── Barra de pesquisa — destaque ── */
+
 div[data-testid="stTextInput"]:has(input[aria-label="busca_global"]) input,
 div[data-testid="stTextInput"] input[id*="busca_global"] {
     height: 48px !important;
@@ -760,9 +732,7 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
     padding-left: 18px !important;
 }
 
-/* ═══════════════════════════════════════
-   BOTÃO WHATSAPP
-═══════════════════════════════════════ */
+
 .wa-btn {
     display: block;
     background: #00A884;
@@ -781,9 +751,7 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
 }
 .wa-btn:hover { background: #007F65; color:#FFFFFF !important; }
 
-/* ═══════════════════════════════════════
-   LABEL SIDEBAR
-═══════════════════════════════════════ */
+
 .sb-label {
     font-size: 9px;
     font-weight: 700;
@@ -794,9 +762,7 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
     display: block;
 }
 
-/* ═══════════════════════════════════════
-   MÓDULO FUNCIONÁRIOS
-═══════════════════════════════════════ */
+
 .func-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -867,7 +833,7 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
     border-left: 3px solid #9AA5B4;
 }
 
-/* ── Abas internas do módulo ── */
+
 .mod-tab-btn {
     display: inline-block;
     padding: 8px 20px;
@@ -880,9 +846,7 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
 }
 
 
-/* ═══════════════════════════════════════
-   MOBILE — elementos exclusivos
-═══════════════════════════════════════ */
+
 .mobile-header { display:none; }
 .mobile-chips  { display:none; }
 .mobile-bottom-nav { display:none; }
@@ -899,17 +863,17 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
 .bnav-item.active { color:#004D40; }
 
 @media (max-width: 768px) {
-    /* Mostrar mobile / esconder desktop */
+    
     .mobile-header     { display:flex !important; background:#003329; padding:12px 16px; border-radius:0 0 14px 14px; align-items:center; justify-content:space-between; margin-bottom:10px; position:sticky; top:0; z-index:100; box-shadow:0 2px 12px rgba(0,51,41,0.3); }
     .mobile-chips      { display:flex !important; overflow-x:auto; white-space:nowrap; padding:8px 12px; background:#fff; border-bottom:0.5px solid #E2E6EA; margin-bottom:6px; scrollbar-width:none; }
     .mobile-chips::-webkit-scrollbar { display:none; }
     .mobile-bottom-nav { display:flex !important; position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:0.5px solid #E2E6EA; padding:8px 0 14px; z-index:200; justify-content:space-around; box-shadow:0 -2px 16px rgba(0,0,0,0.08); }
     .desktop-only      { display:none !important; }
 
-    /* Padding p/ não sobrepor bottom nav */
+    
     .stApp { padding-bottom: 76px !important; }
 
-    /* Botão menu flutuante */
+    
     button[data-testid="collapsedControl"] {
         display:flex !important; visibility:visible !important; opacity:1 !important;
         pointer-events:auto !important; position:fixed !important;
@@ -919,10 +883,10 @@ div[data-testid="stTextInput"] input[id*="busca_global"] {
         border:none !important; box-shadow:0 4px 14px rgba(0,77,64,0.35) !important;
     }
 
-    /* Sidebar */
+    
     section[data-testid="stSidebar"] { min-width:unset !important; max-width:unset !important; }
 
-    /* Componentes */
+    
     .card-cand   { padding:20px 12px !important; }
     .cand-nome   { font-size:18px !important; }
     .cv-resumo   { font-size:12px !important; padding:12px !important; }
@@ -4958,100 +4922,94 @@ with abas[8]:
                         accept_multiple_files=True,
                         key=f"doc_up_multi_{func['id']}")
 
+                    MAPA_AUTO = {
+                        "RG":                            ["rg","identidade","id_"],
+                        "CPF":                           ["cpf"],
+                        "PIS":                           ["pis","pasep","ctps","carteira de trabalho"],
+                        "Comprovante de Residência":     ["residencia","residência","comprovante","endereco","endereço"],
+                        "Diploma":                       ["diploma","certificado","historico","histórico"],
+                        "Cartão de Vacina":              ["vacina","vacinacao","vacinação","carteira nacional","carteira_nacio"],
+                        "Certidão de Casamento":         ["casamento"],
+                        "Certidão de Nascimento dos Filhos": ["nascimento dos filhos","filho","filhos","idade"],
+                        "Declaração Escolar":            ["escolar","matricula","matrícula","escolaridade","declaracao","declaração"],
+                        "Foto 3x4":                      ["foto","3x4"],
+                    }
+
+                    def _cat_auto(nome):
+                        nl = nome.lower()
+                        for cat, pals in MAPA_AUTO.items():
+                            if any(p in nl for p in pals):
+                                return cat
+                        return None
+
+                    # Persistir arquivos no session_state para sobreviver ao clique do botão
+                    _key_st = f"pdfs_stage_{func['id']}"
+                    if _key_st not in st.session_state:
+                        st.session_state[_key_st] = []
+
                     if arquivos_up:
-                        # Preview dos arquivos selecionados
-                        st.markdown(
-                            f"<div style='font-size:12px;color:#004D40;font-weight:600;"
-                            f"margin-bottom:8px;'>{len(arquivos_up)} arquivo(s) selecionado(s)</div>",
-                            unsafe_allow_html=True)
-
-                        MAPA_AUTO = {
-                            "RG":                            ["rg","identidade","id_"],
-                            "CPF":                           ["cpf"],
-                            "PIS":                           ["pis","pasep","ctps","carteira de trabalho"],
-                            "Comprovante de Residência":     ["residencia","residência","comprovante","endereco","endereço"],
-                            "Diploma":                       ["diploma","certificado","historico","histórico"],
-                            "Cartão de Vacina":              ["vacina","vacinacao","vacinação","carteira nacional","carteira_nacio"],
-                            "Certidão de Casamento":         ["casamento"],
-                            "Certidão de Nascimento dos Filhos": ["nascimento","filho","filhos","idade","declaracao","declaração"],
-                            "Declaração Escolar":            ["escolar","matricula","matrícula","escolaridade"],
-                            "Foto 3x4":                      ["foto","3x4"],
-                        }
-
-                        def _cat_auto(nome):
-                            nl = nome.lower()
-                            for cat, pals in MAPA_AUTO.items():
-                                if any(p in nl for p in pals):
-                                    return cat
-                            return None
-
-                        # Coletar todos os PDFs (inclusive de dentro de ZIPs)
-                        pdfs_para_salvar = []
+                        novos = []
                         for arq in arquivos_up:
                             if arq.name.lower().endswith('.zip'):
                                 try:
-                                    import zipfile, io as _io
-                                    with zipfile.ZipFile(_io.BytesIO(arq.read())) as zf:
-                                        for zname in zf.namelist():
-                                            if zname.lower().endswith('.pdf'):
-                                                bn = os.path.basename(zname)
+                                    import zipfile as _zf2, io as _io2
+                                    with _zf2.ZipFile(_io2.BytesIO(arq.read())) as zf2:
+                                        for zn in zf2.namelist():
+                                            if zn.lower().endswith('.pdf'):
+                                                bn = os.path.basename(zn)
                                                 nd = bn
-                                                while nd.lower().endswith('.pdf'):
-                                                    nd = nd[:-4]
+                                                while nd.lower().endswith('.pdf'): nd = nd[:-4]
                                                 nd = nd.replace('_',' ').replace('-',' ').strip()
-                                                pdfs_para_salvar.append({
-                                                    'nome': nd,
-                                                    'bytes': zf.read(zname),
-                                                    'cat': _cat_auto(nd),
-                                                })
+                                                novos.append({'nome':nd,'bytes':zf2.read(zn),'cat':_cat_auto(nd)})
                                 except Exception as ez:
-                                    st.error(f"Erro ao abrir ZIP: {ez}")
+                                    st.error(f"Erro ZIP: {ez}")
                             else:
                                 nd = arq.name
-                                while nd.lower().endswith('.pdf'):
-                                    nd = nd[:-4]
+                                while nd.lower().endswith('.pdf'): nd = nd[:-4]
                                 nd = nd.replace('_',' ').replace('-',' ').strip()
-                                pdfs_para_salvar.append({
-                                    'nome': nd,
-                                    'bytes': arq.read(),
-                                    'cat': _cat_auto(nd),
-                                })
+                                novos.append({'nome':nd,'bytes':arq.read(),'cat':_cat_auto(nd)})
+                        if {p['nome'] for p in novos} != {p['nome'] for p in st.session_state[_key_st]}:
+                            st.session_state[_key_st] = novos
 
-                        # Mostrar tabela de categorização
-                        if pdfs_para_salvar:
-                            cats_edit = {}
-                            for idx_p, pdf in enumerate(pdfs_para_salvar):
-                                col_n, col_c = st.columns([2,2])
-                                col_n.markdown(
-                                    f"<div style='font-size:12px;padding:8px 0;"
-                                    f"color:#0D1B2A;font-weight:600;'>"
-                                    f"📄 {pdf['nome'][:40]}</div>",
-                                    unsafe_allow_html=True)
-                                cat_sel = col_c.selectbox(
-                                    "",
-                                    ["(detectar automaticamente)"] + DOCS_LISTA,
-                                    index=0 if not pdf['cat'] else
-                                          (["(detectar automaticamente)"]+DOCS_LISTA).index(pdf['cat'])
-                                          if pdf['cat'] in DOCS_LISTA else 0,
-                                    key=f"cat_{func['id']}_{idx_p}",
-                                    label_visibility="collapsed")
-                                cats_edit[idx_p] = cat_sel
+                    pdfs_st = st.session_state[_key_st]
+                    if pdfs_st:
+                        st.markdown(
+                            f"<div style='font-size:12px;color:#004D40;font-weight:700;"
+                            f"margin-bottom:8px;'>📋 {len(pdfs_st)} arquivo(s) prontos para salvar</div>",
+                            unsafe_allow_html=True)
+                        cats_edit = {}
+                        for idx_p, pdf in enumerate(pdfs_st):
+                            cn, cc = st.columns([2,2])
+                            cn.markdown(f"<div style='font-size:12px;padding:8px 0;color:#0D1B2A;"
+                                        f"font-weight:600;'>📄 {pdf['nome'][:40]}</div>",
+                                        unsafe_allow_html=True)
+                            opts = ["(detectar automaticamente)"] + DOCS_LISTA
+                            idx_d = opts.index(pdf['cat']) if pdf.get('cat') and pdf['cat'] in opts else 0
+                            cats_edit[idx_p] = cc.selectbox("", opts, index=idx_d,
+                                                             key=f"cat_{func['id']}_{idx_p}",
+                                                             label_visibility="collapsed")
 
-                            if st.button("💾 SALVAR TODOS NO DOSSIÊ",
-                                         key=f"salvar_multi_{func['id']}",
-                                         type="primary", use_container_width=True):
-                                salvos = []
-                                for idx_p, pdf in enumerate(pdfs_para_salvar):
-                                    cat = cats_edit[idx_p]
-                                    if cat == "(detectar automaticamente)":
-                                        cat = pdf['cat'] or pdf['nome']
-                                    func['documentos'][cat] = pdf['bytes']
+                        if st.button("💾 SALVAR TODOS NO DOSSIÊ",
+                                     key=f"salvar_multi_{func['id']}",
+                                     type="primary", use_container_width=True):
+                            salvos = []
+                            for idx_p, pdf in enumerate(pdfs_st):
+                                cat = cats_edit.get(idx_p,"(detectar automaticamente)")
+                                if cat == "(detectar automaticamente)":
+                                    cat = pdf.get('cat') or pdf['nome']
+                                bts = pdf.get('bytes')
+                                if bts:
+                                    func['documentos'][cat] = bts
                                     func['docs_check'][cat] = True
-                                    _sb_salvar_pdf(func['id'], cat, pdf['bytes'])
+                                    _sb_salvar_pdf(func['id'], cat, bts)
                                     salvos.append(cat)
+                            if salvos:
                                 salvar_json()
+                                st.session_state[_key_st] = []
                                 st.success(f"✅ {len(salvos)} documento(s) salvo(s): {', '.join(salvos)}")
                                 st.rerun()
+                            else:
+                                st.warning("Nenhum arquivo válido para salvar.")
 
                     # Listar PDFs já enviados
                     if func.get('documentos'):
@@ -5859,73 +5817,111 @@ with abas[11]:
 
     # ── Função de sincronização (busca e-mails de 1 contato) ─────────
     def _sincronizar_contato(email_c: str, nome_c: str, dias: int = 90) -> int:
-        """Busca e-mails do contato nos últimos N dias. Retorna novos."""
+        """Busca e-mails DO contato (INBOX) e PARA o contato (Enviados). Retorna novos."""
         novos = 0
+        data_corte = (datetime.date.today() - datetime.timedelta(days=dias)).strftime("%d-%b-%Y")
+        ids_existentes = {m['id'] for m in st.session_state.chat_cache.get(email_c, [])}
+
+        def _parse_msg(msg_s, mid_str, direcao):
+            """Extrai dados de uma mensagem e retorna objeto padronizado."""
+            rem_nm_s, rem_em_s = email.utils.parseaddr(msg_s.get('From',''))
+            try:
+                dec_n, enc_n = decode_header(rem_nm_s)[0]
+                rem_nm_s = dec_n.decode(enc_n or 'utf-8', errors='replace') if isinstance(dec_n,bytes) else str(dec_n)
+            except: pass
+            subj_s = msg_s.get('Subject','')
+            try:
+                dec_ss, enc_ss = decode_header(subj_s)[0]
+                subj_s = dec_ss.decode(enc_ss or 'utf-8', errors='replace') if isinstance(dec_ss,bytes) else str(dec_ss)
+            except: pass
+            try:
+                dt_s   = parsedate_to_datetime(msg_s.get('Date',''))
+                data_s = dt_s.strftime('%d/%m/%Y %H:%M')
+                ts_s   = dt_s.timestamp()
+            except:
+                data_s = ''; ts_s = 0
+            corpo_s = ''
+            for pt_s in msg_s.walk():
+                if pt_s.get_content_type() == 'text/plain':
+                    try:
+                        raw_s = pt_s.get_payload(decode=True).decode('utf-8', errors='ignore')
+                        linhas_s = [l.strip() for l in raw_s.splitlines()
+                                    if l.strip() and not l.strip().startswith('>')]
+                        corpo_s = '\n'.join(linhas_s[:30]); break
+                    except: pass
+            anexos_s = []
+            for pt_s in msg_s.walk():
+                fn_s = pt_s.get_filename() or ''
+                if fn_s:
+                    pay_s = pt_s.get_payload(decode=True)
+                    ext_s = fn_s.lower().rsplit('.',1)[-1] if '.' in fn_s else ''
+                    b64_s = base64.b64encode(pay_s).decode() if pay_s else ''
+                    anexos_s.append({'nome':fn_s,'tipo':ext_s,'b64':b64_s})
+            return {
+                'id':       mid_str,
+                'de':       rem_nm_s or (nome_c if direcao=='recebido' else 'RH HOVA'),
+                'email':    rem_em_s.lower(),
+                'assunto':  subj_s,
+                'data':     data_s,
+                'ts':       ts_s,
+                'corpo':    corpo_s,
+                'anexos':   anexos_s,
+                'direcao':  direcao,
+                '_bytes':   {},
+            }
+
         try:
             conn_s = imaplib.IMAP4_SSL(IMAP_SERVER, 993, timeout=20)
             conn_s.login(EMAIL_CONTA, SENHA_CONTA)
-            conn_s.select("INBOX")
-            data_corte = (datetime.date.today() - datetime.timedelta(days=dias)).strftime("%d-%b-%Y")
-            _, ids_s = conn_s.search(None, f'(FROM "{email_c}") SINCE {data_corte}')
-            ids_s2 = ids_s[0].split() if ids_s[0] else []
-            ids_existentes = {m['id'] for m in st.session_state.chat_cache.get(email_c, [])}
 
-            for mid_s in ids_s2:
+            # ── 1. INBOX — mensagens RECEBIDAS do contato ──
+            conn_s.select("INBOX")
+            _, ids_recv = conn_s.search(None, f'(FROM "{email_c}") SINCE {data_corte}')
+            for mid_s in (ids_recv[0].split() if ids_recv[0] else []):
                 try:
-                    mid_str = mid_s.decode() if isinstance(mid_s, bytes) else str(mid_s)
-                    if mid_str in ids_existentes:
-                        continue
+                    mid_str = mid_s.decode() if isinstance(mid_s,bytes) else str(mid_s)
+                    if f"recv_{mid_str}" in ids_existentes: continue
                     _, md_s = conn_s.fetch(mid_s, '(RFC822)')
                     msg_s   = email.message_from_bytes(md_s[0][1])
-                    rem_nm_s, rem_em_s = email.utils.parseaddr(msg_s.get('From',''))
-                    try:
-                        dec_n, enc_n = decode_header(rem_nm_s)[0]
-                        rem_nm_s = dec_n.decode(enc_n or 'utf-8', errors='replace') if isinstance(dec_n,bytes) else str(dec_n)
-                    except: pass
-                    subj_s = msg_s.get('Subject','')
-                    try:
-                        dec_ss, enc_ss = decode_header(subj_s)[0]
-                        subj_s = dec_ss.decode(enc_ss or 'utf-8', errors='replace') if isinstance(dec_ss,bytes) else str(dec_ss)
-                    except: pass
-                    try:
-                        dt_s   = parsedate_to_datetime(msg_s.get('Date',''))
-                        data_s = dt_s.strftime('%d/%m/%Y %H:%M')
-                        ts_s   = dt_s.timestamp()
-                    except:
-                        data_s = ''; ts_s = 0
-                    corpo_s = ''
-                    for pt_s in msg_s.walk():
-                        if pt_s.get_content_type() == 'text/plain':
-                            try:
-                                raw_s = pt_s.get_payload(decode=True).decode('utf-8', errors='ignore')
-                                linhas_s = [l.strip() for l in raw_s.splitlines()
-                                            if l.strip() and not l.strip().startswith('>')]
-                                corpo_s = '\n'.join(linhas_s[:30]); break
-                            except: pass
-                    anexos_s = []
-                    for pt_s in msg_s.walk():
-                        fn_s = pt_s.get_filename() or ''
-                        if fn_s:
-                            pay_s = pt_s.get_payload(decode=True)
-                            ext_s = fn_s.lower().rsplit('.',1)[-1] if '.' in fn_s else ''
-                            b64_s = base64.b64encode(pay_s).decode() if pay_s else ''
-                            anexos_s.append({'nome':fn_s,'tipo':ext_s,'b64':b64_s})
-                    msg_obj_s = {
-                        'id': mid_str, 'de': rem_nm_s or nome_c,
-                        'email': rem_em_s.lower(), 'assunto': subj_s,
-                        'data': data_s, 'ts': ts_s, 'corpo': corpo_s,
-                        'anexos': anexos_s, 'direcao': 'recebido',
-                        '_bytes': {},
-                    }
+                    obj = _parse_msg(msg_s, f"recv_{mid_str}", 'recebido')
                     if email_c not in st.session_state.chat_cache:
                         st.session_state.chat_cache[email_c] = []
-                    st.session_state.chat_cache[email_c].append(msg_obj_s)
+                    st.session_state.chat_cache[email_c].append(obj)
                     novos += 1
                 except: continue
+
+            # ── 2. SENT — mensagens ENVIADAS para o contato ──
+            # Tentar nomes comuns da pasta Enviados
+            for pasta_sent in ['Sent', 'Sent Messages', 'INBOX.Sent', 'Enviados',
+                                '[Gmail]/Sent Mail', 'Sent Items']:
+                try:
+                    status_s, _ = conn_s.select(pasta_sent)
+                    if status_s == 'OK':
+                        _, ids_sent = conn_s.search(None, f'(TO "{email_c}") SINCE {data_corte}')
+                        for mid_s in (ids_sent[0].split() if ids_sent[0] else []):
+                            try:
+                                mid_str = mid_s.decode() if isinstance(mid_s,bytes) else str(mid_s)
+                                if f"sent_{mid_str}" in ids_existentes: continue
+                                _, md_s = conn_s.fetch(mid_s, '(RFC822)')
+                                msg_s   = email.message_from_bytes(md_s[0][1])
+                                obj = _parse_msg(msg_s, f"sent_{mid_str}", 'enviado')
+                                if email_c not in st.session_state.chat_cache:
+                                    st.session_state.chat_cache[email_c] = []
+                                st.session_state.chat_cache[email_c].append(obj)
+                                novos += 1
+                            except: continue
+                        break  # achou a pasta certa
+                except: continue
+
             conn_s.logout()
+
             if novos > 0:
+                # Ordenar por timestamp
+                st.session_state.chat_cache[email_c] = sorted(
+                    st.session_state.chat_cache[email_c], key=lambda x: x.get('ts',0))
                 _sb_salvar_msgs(email_c, st.session_state.chat_cache[email_c])
-                st.session_state.chat_ultimo_sync[email_c] = time.time()
+
+            st.session_state.chat_ultimo_sync[email_c] = time.time()
         except: pass
         return novos
 
@@ -6082,50 +6078,85 @@ with abas[11]:
                 def _chat_html(msgs, nome_c, email_rh):
                     css = (
                         "<style>"
+                        "@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');"
                         "*{margin:0;padding:0;box-sizing:border-box;}"
-                        "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"
-                        "background:#F0F2F5;padding:14px 12px;"
-                        "display:flex;flex-direction:column;gap:2px;}"
-                        "body::-webkit-scrollbar{width:4px;}"
-                        "body::-webkit-scrollbar-thumb{background:#B2DFDB;border-radius:4px;}"
-                        ".div{display:flex;align-items:center;gap:8px;margin:12px 0 4px;}"
-                        ".div::before,.div::after{content:'';flex:1;height:1px;background:#C8D0DC;}"
-                        ".div span{font-size:10px;font-weight:600;color:#9AA5B4;"
-                        "background:#F0F2F5;padding:0 8px;white-space:nowrap;}"
-                        ".row{display:flex;align-items:flex-end;gap:6px;margin-bottom:3px;"
-                        "animation:fi 0.2s ease;}"
-                        "@keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}"
-                        ".row.s{flex-direction:row-reverse;}"
-                        ".av{width:28px;height:28px;border-radius:50%;"
-                        "background:linear-gradient(145deg,#26A69A,#004D40);"
-                        "color:#fff;font-size:9px;font-weight:800;"
-                        "display:flex;align-items:center;justify-content:center;flex-shrink:0;}"
-                        ".av.s{background:linear-gradient(145deg,#003329,#004D40);}"
-                        ".bbl{max-width:72%;padding:8px 12px 6px;border-radius:16px;"
-                        "box-shadow:0 1px 3px rgba(0,0,0,0.08);word-break:break-word;}"
-                        ".bbl.r{background:#fff;border-bottom-left-radius:3px;}"
-                        ".bbl.s{background:linear-gradient(135deg,#004D40,#005A4F);"
-                        "color:#fff;border-bottom-right-radius:3px;}"
-                        ".sbj{font-size:9px;font-weight:700;color:#004D40;"
-                        "margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid #EEF1F5;"
-                        "letter-spacing:0.3px;text-transform:uppercase;}"
-                        ".bbl.s .sbj{color:rgba(255,255,255,0.7);border-color:rgba(255,255,255,0.15);}"
-                        ".bdy{font-size:12px;line-height:1.55;color:#1A202C;white-space:pre-wrap;}"
-                        ".bbl.s .bdy{color:#fff;}"
-                        ".ts{font-size:9px;color:#9AA5B4;text-align:right;margin-top:4px;}"
-                        ".bbl.s .ts{color:rgba(255,255,255,0.55);}"
-                        ".anwrap{margin-top:7px;display:flex;flex-direction:column;gap:5px;}"
-                        ".an{display:flex;align-items:center;gap:7px;"
-                        "background:rgba(0,77,64,0.07);border:1px solid rgba(0,77,64,0.15);"
-                        "border-radius:9px;padding:7px 10px;"
-                        "text-decoration:none;transition:background 0.15s;}"
-                        ".bbl.s .an{background:rgba(255,255,255,0.13);"
-                        "border-color:rgba(255,255,255,0.2);}"
-                        ".an:hover{background:rgba(0,77,64,0.13);}"
-                        ".ai{font-size:15px;}"
-                        ".an{font-size:11px;font-weight:600;color:#004D40;flex:1;"
+                        "body{font-family:'Inter',-apple-system,sans-serif;"
+                        "background:#ECE5DD;padding:12px 10px;"
+                        "display:flex;flex-direction:column;gap:2px;min-height:100%;}"
+                        "body::-webkit-scrollbar{width:5px;}"
+                        "body::-webkit-scrollbar-thumb{background:#C1B9B0;border-radius:4px;}"
+
+                        
+                        ".div{display:flex;align-items:center;justify-content:center;"
+                        "margin:14px 0 6px;}"
+                        ".div span{background:#D1C4B8;color:#6B5E57;font-size:10px;"
+                        "font-weight:600;padding:3px 12px;border-radius:20px;"
+                        "box-shadow:0 1px 2px rgba(0,0,0,0.1);}"
+
+                        
+                        ".row{display:flex;align-items:flex-end;gap:6px;margin-bottom:2px;"
+                        "animation:fi 0.18s ease;}"
+                        "@keyframes fi{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}"
+                        ".row.s{flex-direction:row-reverse;justify-content:flex-start;}"
+                        ".row.r{flex-direction:row;justify-content:flex-start;}"
+
+                        
+                        ".av{width:30px;height:30px;border-radius:50%;flex-shrink:0;"
+                        "background:linear-gradient(145deg,#075E54,#128C7E);"
+                        "color:#fff;font-size:10px;font-weight:700;"
+                        "display:flex;align-items:center;justify-content:center;"
+                        "box-shadow:0 1px 3px rgba(0,0,0,0.2);}"
+                        ".av.s{background:linear-gradient(145deg,#25D366,#128C7E);}"
+
+                        
+                        ".bbl{max-width:68%;padding:7px 12px 5px;"
+                        "border-radius:0 12px 12px 12px;"
+                        "box-shadow:0 1px 2px rgba(0,0,0,0.13);"
+                        "word-break:break-word;position:relative;}"
+                        ".bbl.r{background:#FFFFFF;border-radius:0 12px 12px 12px;}"
+                        
+                        ".bbl.s{background:#DCF8C6;border-radius:12px 0 12px 12px;}"
+
+                        
+                        ".bbl.r::before{content:'';position:absolute;left:-6px;top:0;"
+                        "border:6px solid transparent;border-right-color:#FFFFFF;"
+                        "border-top-color:#FFFFFF;}"
+                        
+                        ".bbl.s::after{content:'';position:absolute;right:-6px;top:0;"
+                        "border:6px solid transparent;border-left-color:#DCF8C6;"
+                        "border-top-color:#DCF8C6;}"
+
+                        
+                        ".sbj{font-size:9.5px;font-weight:700;color:#075E54;"
+                        "margin-bottom:4px;padding-bottom:4px;"
+                        "border-bottom:1px solid rgba(7,94,84,0.15);"
+                        "text-transform:uppercase;letter-spacing:0.3px;}"
+                        ".bbl.s .sbj{color:#1a7a3c;border-color:rgba(0,0,0,0.08);}"
+
+                        
+                        ".bdy{font-size:13px;line-height:1.5;color:#303030;"
+                        "white-space:pre-wrap;}"
+                        ".bbl.s .bdy{color:#1a1a1a;}"
+
+                        
+                        ".ts{font-size:10px;color:#8696A0;text-align:right;"
+                        "margin-top:3px;display:flex;align-items:center;"
+                        "justify-content:flex-end;gap:3px;}"
+                        ".bbl.s .ts{color:#4a9161;}"
+                        ".check{font-size:12px;}"
+
+                        
+                        ".anwrap{margin-top:6px;display:flex;flex-direction:column;gap:4px;}"
+                        ".an{display:flex;align-items:center;gap:8px;"
+                        "background:rgba(0,0,0,0.05);border-radius:8px;"
+                        "padding:6px 9px;text-decoration:none;transition:background 0.15s;}"
+                        ".bbl.s .an{background:rgba(0,0,0,0.07);}"
+                        ".an:hover{background:rgba(0,0,0,0.1);}"
+                        ".ai{font-size:18px;flex-shrink:0;}"
+                        ".anm{font-size:11px;font-weight:600;color:#075E54;flex:1;"
                         "overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}"
-                        ".bbl.s .an{color:#fff;}"
+                        ".bbl.s .anm{color:#1a7a3c;}"
+                        ".andl{font-size:14px;color:#075E54;flex-shrink:0;}"
                         "</style>"
                     )
                     body = ''
@@ -6135,34 +6166,50 @@ with abas[11]:
                         if dm != data_ant:
                             data_ant = dm
                             body += f'<div class="div"><span>{dm}</span></div>'
-                        eh_s = m.get('email','') == email_rh.lower()
+
+                        # Determinar direção pelo campo 'direcao' salvo
+                        direcao = m.get('direcao', '')
+                        if not direcao:
+                            # Fallback: se o remetente é o RH = enviado
+                            direcao = 'enviado' if m.get('email','') == email_rh.lower() else 'recebido'
+                        eh_s = (direcao == 'enviado')
                         lado = 's' if eh_s else 'r'
                         ini_av = 'RH' if eh_s else iniciais(nome_c)
                         corp = (m.get('corpo','') or '').replace('<','&lt;').replace('>','&gt;').replace('\n','<br>')
                         sbj  = m.get('assunto','')
                         hr   = m.get('data','')[11:16] if len(m.get('data',''))>10 else ''
+
                         sbj_h = f'<div class="sbj">{sbj[:55]}</div>' if sbj else ''
                         bdy_h = f'<div class="bdy">{corp}</div>' if corp else ''
+                        check = '<span class="check">✓✓</span>' if eh_s else ''
+
                         ans_h = ''
                         for an in m.get('anexos',[]):
                             b64a = an.get('b64','')
                             tn   = an.get('tipo','')
                             ico  = '📄' if tn=='pdf' else '🗜️' if tn=='zip' else '🖼️' if tn in ('jpg','jpeg','png') else '📎'
-                            nm   = an.get('nome','arq')[:30]
+                            nm   = an.get('nome','arq')[:32]
                             if b64a:
-                                mt = 'application/pdf' if tn=='pdf' else 'application/octet-stream'
+                                mt   = 'application/pdf' if tn=='pdf' else 'application/octet-stream'
                                 href = f'data:{mt};base64,{b64a}'
                             else:
                                 href = '#'
-                            ans_h += f'<a href="{href}" download="{nm}" class="an"><span class="ai">{ico}</span><span class="an">{nm}</span></a>'
+                            ans_h += (f'<a href="{href}" download="{nm}" class="an">'
+                                      f'<span class="ai">{ico}</span>'
+                                      f'<span class="anm">{nm}</span>'
+                                      f'<span class="andl">⬇</span></a>')
                         an_wrap = f'<div class="anwrap">{ans_h}</div>' if ans_h else ''
+
                         body += (f'<div class="row {lado}">'
                                  f'<div class="av {lado}">{ini_av}</div>'
-                                 f'<div class="bbl {lado}">{sbj_h}{bdy_h}{an_wrap}'
-                                 f'<div class="ts">{hr}</div></div></div>')
+                                 f'<div class="bbl {lado}">'
+                                 f'{sbj_h}{bdy_h}{an_wrap}'
+                                 f'<div class="ts">{hr} {check}</div>'
+                                 f'</div></div>')
+
                     if not body:
-                        body = ('<div style="text-align:center;padding:50px 20px;color:#9AA5B4;">'
-                                '<div style="font-size:38px">✉️</div>'
+                        body = ('<div style="text-align:center;padding:50px 20px;color:#8696A0;">'
+                                '<div style="font-size:40px">💬</div>'
                                 '<div style="margin-top:10px;font-size:13px;font-weight:600;">'
                                 'Nenhuma mensagem ainda</div>'
                                 '<div style="font-size:11px;margin-top:4px;">'
